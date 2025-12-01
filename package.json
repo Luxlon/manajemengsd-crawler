@@ -1,0 +1,38 @@
+{
+  "name": "playwright-crawler",
+  "version": "2.0.0",
+  "description": "Automated crawler with cron scheduling for GSD management",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "start:cron": "node server-with-cron.js",
+    "cron:standalone": "node cron-scheduler.js",
+    "test": "node crawler.js",
+    "test:period1": "node -e \"import('./crawler.js').then(m => m.runCrawlPeriod1_20('BANDUNG'))\"",
+    "test:period2": "node -e \"import('./crawler.js').then(m => m.runCrawlPeriod21_30('BANDUNG'))\"",
+    "logs": "tail -f logs/crawler-$(date +%Y-%m-%d).log",
+    "logs:history": "cat logs/job-history.jsonl | npx json"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "csv-parser": "^3.2.0",
+    "dotenv": "^16.6.1",
+    "express": "^4.18.2",
+    "node-cron": "^3.0.3",
+    "playwright": "^1.47.0"
+  },
+  "devDependencies": {},
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "keywords": [
+    "crawler",
+    "playwright",
+    "automation",
+    "cron",
+    "scheduler"
+  ],
+  "author": "GSD Team",
+  "license": "ISC"
+}
