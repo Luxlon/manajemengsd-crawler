@@ -20,10 +20,22 @@ dotenv.config();
 // Konfigurasi
 const CONFIG = {
     credentials: {
-        BANDUNG: { username: "855060", password: "123" },
-        CORPU: { username: "AMIRUDDIN", password: "123" },
-        PRIANGAN_TIMUR: { username: "755261", password: "123" },
-        PRIANGAN_BARAT: { username: "825068", password: "123" },
+        BANDUNG: { 
+            username: process.env.BANDUNG_USERNAME, 
+            password: process.env.BANDUNG_PASSWORD 
+        },
+        CORPU: { 
+            username: process.env.CORPU_USERNAME, 
+            password: process.env.CORPU_PASSWORD 
+        },
+        PRIANGAN_TIMUR: { 
+            username: process.env.PRIANGAN_TIMUR_USERNAME, 
+            password: process.env.PRIANGAN_TIMUR_PASSWORD 
+        },
+        PRIANGAN_BARAT: { 
+            username: process.env.PRIANGAN_BARAT_USERNAME, 
+            password: process.env.PRIANGAN_BARAT_PASSWORD 
+        },
     },
     currentArea: "BANDUNG",
     statuses: ["OPEN", "SUBMITTED", "APPROVED"],

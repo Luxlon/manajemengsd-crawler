@@ -1,0 +1,153 @@
+# ========================================
+# GitHub Actions: Scheduled Crawler
+# Runs crawler automatically on schedule
+# ========================================
+
+name: Scheduled Crawler
+
+on:
+  # Schedule: Setiap hari jam 06:00 WIB (23:00 UTC)
+  schedule:
+    - cron: '0 23 * * *'  # Daily at 06:00 WIB
+    # - cron: '0 */6 * * *'  # Every 6 hours
+    
+  # Manual trigger via GitHub UI
+  workflow_dispatch:
+    inputs:
+      area:
+        description: 'Area to crawl'
+        required: true
+        default: 'BANDUNG'
+        type: choice
+        options:
+          - BANDUNG
+          - CORPU
+          - PRIANGAN_BARAT
+          - PRIANGAN_TIMUR
+          - ALL_AREAS
+      period:
+        description: 'Period to crawl'
+        required: true
+        default: 'BOTH'
+        type: choice
+        options:
+          - PERIOD_1_20
+          - PERIOD_21_30
+          - BOTH
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60  # Max 1 hour per run
+    
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: Playwright-crawler/package-lock.json
+      
+      - name: 📦 Install dependencies
+        working-directory: ./Playwright-crawler
+        run: |
+          npm ci
+          npx playwright install chromium
+          npx playwright install-deps chromium
+      
+      - name: 🔐 Setup credentials
+        working-directory: ./Playwright-crawler
+        run: |
+          echo "NEXTJS_API_URL=${{ secrets.NEXTJS_API_URL }}" >> .env
+          echo "CRAWLER_API_KEY=${{ secrets.CRAWLER_API_KEY }}" >> .env
+          echo "BANDUNG_USERNAME=${{ secrets.BANDUNG_USERNAME }}" >> .env
+          echo "BANDUNG_PASSWORD=${{ secrets.BANDUNG_PASSWORD }}" >> .env
+          echo "CORPU_USERNAME=${{ secrets.CORPU_USERNAME }}" >> .env
+          echo "CORPU_PASSWORD=${{ secrets.CORPU_PASSWORD }}" >> .env
+          echo "PRIANGAN_TIMUR_USERNAME=${{ secrets.PRIANGAN_TIMUR_USERNAME }}" >> .env
+          echo "PRIANGAN_TIMUR_PASSWORD=${{ secrets.PRIANGAN_TIMUR_PASSWORD }}" >> .env
+          echo "PRIANGAN_BARAT_USERNAME=${{ secrets.PRIANGAN_BARAT_USERNAME }}" >> .env
+          echo "PRIANGAN_BARAT_PASSWORD=${{ secrets.PRIANGAN_BARAT_PASSWORD }}" >> .env
+      
+      - name: 🚀 Run crawler (Scheduled - All Areas)
+        if: github.event_name == 'schedule'
+        working-directory: ./Playwright-crawler
+        run: |
+          node -e "
+          import('./crawler.js').then(async ({ runCrawlPeriod1_20, runCrawlPeriod21_30 }) => {
+            const areas = ['BANDUNG', 'CORPU', 'PRIANGAN_BARAT', 'PRIANGAN_TIMUR'];
+            
+            for (const area of areas) {
+              console.log(\`\n🚀 Starting \${area}...\`);
+              
+              try {
+                // Period 1-20
+                await runCrawlPeriod1_20(area);
+                console.log(\`✅ \${area} Period 1-20 done\`);
+                
+                // Period 21-30
+                await runCrawlPeriod21_30(area);
+                console.log(\`✅ \${area} Period 21-30 done\`);
+                
+              } catch (err) {
+                console.error(\`❌ \${area} failed:\`, err.message);
+              }
+            }
+            
+            console.log('\\n🎉 All areas completed!');
+          });
+          "
+      
+      - name: 🚀 Run crawler (Manual Trigger)
+        if: github.event_name == 'workflow_dispatch'
+        working-directory: ./Playwright-crawler
+        run: |
+          AREA="${{ github.event.inputs.area }}"
+          PERIOD="${{ github.event.inputs.period }}"
+          
+          node -e "
+          import('./crawler.js').then(async ({ runCrawlPeriod1_20, runCrawlPeriod21_30 }) => {
+            const area = '$AREA';
+            const period = '$PERIOD';
+            
+            if (area === 'ALL_AREAS') {
+              const areas = ['BANDUNG', 'CORPU', 'PRIANGAN_BARAT', 'PRIANGAN_TIMUR'];
+              for (const a of areas) {
+                console.log(\`\n🚀 Crawling \${a}...\`);
+                if (period === 'PERIOD_1_20' || period === 'BOTH') {
+                  await runCrawlPeriod1_20(a);
+                }
+                if (period === 'PERIOD_21_30' || period === 'BOTH') {
+                  await runCrawlPeriod21_30(a);
+                }
+              }
+            } else {
+              console.log(\`\n🚀 Crawling \${area}...\`);
+              if (period === 'PERIOD_1_20' || period === 'BOTH') {
+                await runCrawlPeriod1_20(area);
+              }
+              if (period === 'PERIOD_21_30' || period === 'BOTH') {
+                await runCrawlPeriod21_30(area);
+              }
+            }
+            
+            console.log('\\n🎉 Crawling completed!');
+          });
+          "
+      
+      - name: 📊 Upload logs (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: crawler-logs-${{ github.run_number }}
+          path: Playwright-crawler/crawl_data/*.csv
+          retention-days: 7
+      
+      - name: 📢 Notify on failure (optional)
+        if: failure()
+        run: |
+          echo "❌ Crawler failed! Check logs at:"
+          echo "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

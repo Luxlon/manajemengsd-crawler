@@ -1,0 +1,100 @@
+# ========================================
+# GitHub Actions: Manual Crawler Trigger
+# Run crawler on-demand via GitHub UI
+# ========================================
+
+name: Manual Crawler
+
+on:
+  workflow_dispatch:
+    inputs:
+      area:
+        description: 'Area to crawl'
+        required: true
+        default: 'BANDUNG'
+        type: choice
+        options:
+          - BANDUNG
+          - CORPU
+          - PRIANGAN_BARAT
+          - PRIANGAN_TIMUR
+      period:
+        description: 'Period to crawl'
+        required: true
+        default: 'BOTH'
+        type: choice
+        options:
+          - PERIOD_1_20
+          - PERIOD_21_30
+          - BOTH
+
+jobs:
+  crawl-single-area:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+      
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: Playwright-crawler/package-lock.json
+      
+      - name: 📦 Install dependencies
+        working-directory: ./Playwright-crawler
+        run: |
+          npm ci
+          npx playwright install chromium
+          npx playwright install-deps chromium
+      
+      - name: 🔐 Setup environment
+        working-directory: ./Playwright-crawler
+        run: |
+          echo "NEXTJS_API_URL=${{ secrets.NEXTJS_API_URL }}" >> .env
+          echo "CRAWLER_API_KEY=${{ secrets.CRAWLER_API_KEY }}" >> .env
+          echo "BANDUNG_USERNAME=${{ secrets.BANDUNG_USERNAME }}" >> .env
+          echo "BANDUNG_PASSWORD=${{ secrets.BANDUNG_PASSWORD }}" >> .env
+          echo "CORPU_USERNAME=${{ secrets.CORPU_USERNAME }}" >> .env
+          echo "CORPU_PASSWORD=${{ secrets.CORPU_PASSWORD }}" >> .env
+          echo "PRIANGAN_TIMUR_USERNAME=${{ secrets.PRIANGAN_TIMUR_USERNAME }}" >> .env
+          echo "PRIANGAN_TIMUR_PASSWORD=${{ secrets.PRIANGAN_TIMUR_PASSWORD }}" >> .env
+          echo "PRIANGAN_BARAT_USERNAME=${{ secrets.PRIANGAN_BARAT_USERNAME }}" >> .env
+          echo "PRIANGAN_BARAT_PASSWORD=${{ secrets.PRIANGAN_BARAT_PASSWORD }}" >> .env
+      
+      - name: 🚀 Run Crawler - Period 1-20
+        if: inputs.period == 'PERIOD_1_20' || inputs.period == 'BOTH'
+        working-directory: ./Playwright-crawler
+        run: |
+          node -e "
+          import('./crawler.js').then(async ({ runCrawlPeriod1_20 }) => {
+            console.log('🚀 Starting Period 1-20 for ${{ inputs.area }}...');
+            const result = await runCrawlPeriod1_20('${{ inputs.area }}');
+            console.log('✅ Period 1-20 completed!');
+            console.log('📊 Stats:', result);
+          });
+          "
+      
+      - name: 🚀 Run Crawler - Period 21-30
+        if: inputs.period == 'PERIOD_21_30' || inputs.period == 'BOTH'
+        working-directory: ./Playwright-crawler
+        run: |
+          node -e "
+          import('./crawler.js').then(async ({ runCrawlPeriod21_30 }) => {
+            console.log('🚀 Starting Period 21-30 for ${{ inputs.area }}...');
+            const result = await runCrawlPeriod21_30('${{ inputs.area }}');
+            console.log('✅ Period 21-30 completed!');
+            console.log('📊 Stats:', result);
+          });
+          "
+      
+      - name: ✅ Summary
+        run: |
+          echo "## 🎉 Crawling Completed!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Area**: ${{ inputs.area }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Period**: ${{ inputs.period }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Time**: $(date)" >> $GITHUB_STEP_SUMMARY
