@@ -1,0 +1,35 @@
+# Node modules
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Environment variables
+.env
+
+# Backup files
+backup/
+gakepake/
+
+# Crawl data history
+crawl_data/history/
+crawl_data/*.csv
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Git
+.git/
+.gitignore
+
+# Documentation (Render doesn't need these)
+README.md
+*.md
+!render.yaml
+
+# GitHub workflows (not needed in Docker)
+.github/

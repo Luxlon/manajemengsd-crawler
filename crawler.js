@@ -292,24 +292,14 @@ export async function runCrawlPeriod1_20(areaName = "BANDUNG", runId = null) {
     broadcastLog(`🚀 CRAWLER PERIODE 1-20 - ${areaName} (Direct API Mode)`);
     broadcastLog(`   🆔 Run ID: ${apiClient.runId}`);
     
-    // ✅ Detect environment: GitHub Actions vs Local
+    // ✅ Detect environment
     const isCI = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true';
+    const isRender = process.env.RENDER === 'true';
+    const isLocal = !isCI && !isRender;
     
     let browser;
-    if (isCI) {
-        // GitHub Actions: Use regular browser (no persistent context)
-        broadcastLog("🔧 Running in CI environment (GitHub Actions)");
-        browser = await chromium.launch({
-            headless: true,
-            args: [
-                "--no-sandbox",
-                "--disable-setuid-sandbox",
-                "--disable-dev-shm-usage",
-                "--disable-blink-features=AutomationControlled",
-            ],
-        });
-    } else {
-        // Local: Use persistent context with saved session
+    if (isLocal) {
+        // Local: Use Windows persistent context
         broadcastLog("🔧 Running in local environment");
         const userDataDir = "C:\\Users\\Luxion\\AppData\\Local\\Google\\Chrome\\User Data\\PlaywrightProfile";
         browser = await chromium.launchPersistentContext(userDataDir, {
@@ -322,9 +312,29 @@ export async function runCrawlPeriod1_20(areaName = "BANDUNG", runId = null) {
                 "--disable-infobars",
             ],
         });
+    } else if (isRender) {
+        // Render.com: Use persistent context in Docker volume
+        broadcastLog("🔧 Running on Render.com (persistent browser)");
+        const userDataDir = "/app/playwright-data";
+        browser = await chromium.launchPersistentContext(userDataDir, {
+            headless: true,
+            args: [
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-blink-features=AutomationControlled",
+                "--single-process", // Important for 512MB RAM limit
+            ],
+        });
+    } else {
+        // GitHub Actions: Cannot work with AppSheet OAuth
+        broadcastLog("❌ GitHub Actions detected - AppSheet OAuth not supported");
+        throw new Error("GitHub Actions cannot handle AppSheet OAuth. Use Render.com deployment instead.");
     }
 
-    const page = isCI ? await browser.newPage() : browser.pages()[0] || await browser.newPage();
+    const page = (isLocal || isRender) 
+        ? (browser.pages()[0] || await browser.newPage())
+        : await browser.newPage();
 
     try {
         broadcastLog("🌐 Opening AppSheet...");
@@ -500,24 +510,14 @@ export async function runCrawlPeriod21_30(areaName = "BANDUNG") {
         return { success: true, totalChecked: 0, totalUpdated: 0 };
     }
 
-    // ✅ Detect environment: GitHub Actions vs Local
+    // ✅ Detect environment
     const isCI = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true';
+    const isRender = process.env.RENDER === 'true';
+    const isLocal = !isCI && !isRender;
     
     let browser;
-    if (isCI) {
-        // GitHub Actions: Use regular browser (no persistent context)
-        console.log("🔧 Running in CI environment (GitHub Actions)");
-        browser = await chromium.launch({
-            headless: true,
-            args: [
-                "--no-sandbox",
-                "--disable-setuid-sandbox",
-                "--disable-dev-shm-usage",
-                "--disable-blink-features=AutomationControlled",
-            ],
-        });
-    } else {
-        // Local: Use persistent context with saved session
+    if (isLocal) {
+        // Local: Use Windows persistent context
         console.log("🔧 Running in local environment");
         const userDataDir = "C:\\Users\\Luxion\\AppData\\Local\\Google\\Chrome\\User Data\\PlaywrightProfile";
         browser = await chromium.launchPersistentContext(userDataDir, {
@@ -530,9 +530,29 @@ export async function runCrawlPeriod21_30(areaName = "BANDUNG") {
                 "--disable-infobars",
             ],
         });
+    } else if (isRender) {
+        // Render.com: Use persistent context in Docker volume
+        console.log("🔧 Running on Render.com (persistent browser)");
+        const userDataDir = "/app/playwright-data";
+        browser = await chromium.launchPersistentContext(userDataDir, {
+            headless: true,
+            args: [
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-blink-features=AutomationControlled",
+                "--single-process", // Important for 512MB RAM limit
+            ],
+        });
+    } else {
+        // GitHub Actions: Cannot work with AppSheet OAuth
+        console.log("❌ GitHub Actions detected - AppSheet OAuth not supported");
+        throw new Error("GitHub Actions cannot handle AppSheet OAuth. Use Render.com deployment instead.");
     }
 
-    const page = isCI ? await browser.newPage() : browser.pages()[0] || await browser.newPage();
+    const page = (isLocal || isRender) 
+        ? (browser.pages()[0] || await browser.newPage())
+        : await browser.newPage();
 
     try {
         await page.goto(
@@ -656,7 +676,10 @@ export async function runCrawlPeriod21_30(areaName = "BANDUNG") {
         console.error("❌ FATAL ERROR:", error.message);
         throw error;
     } finally {
-        await browser.close();
+        // Only close if browser is regular (not persistent context)
+        if (browser && !(isLocal || isRender)) {
+            await browser.close();
+        }
     }
 }
 

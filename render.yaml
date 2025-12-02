@@ -1,0 +1,35 @@
+services:
+  - type: web
+    name: crawler-service
+    runtime: docker
+    plan: free
+    region: singapore
+    branch: main
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 4000
+      - key: NEXTJS_API_URL
+        sync: false
+      - key: CRAWLER_API_KEY
+        sync: false
+      - key: BANDUNG_USERNAME
+        sync: false
+      - key: BANDUNG_PASSWORD
+        sync: false
+      - key: CORPU_USERNAME
+        sync: false
+      - key: CORPU_PASSWORD
+        sync: false
+      - key: PRIANGAN_TIMUR_USERNAME
+        sync: false
+      - key: PRIANGAN_TIMUR_PASSWORD
+        sync: false
+      - key: PRIANGAN_BARAT_USERNAME
+        sync: false
+      - key: PRIANGAN_BARAT_PASSWORD
+        sync: false
+    healthCheckPath: /health
+    autoDeploy: true
