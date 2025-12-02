@@ -288,24 +288,43 @@ export async function runCrawlPeriod1_20(areaName = "BANDUNG", runId = null) {
             });
         }
     };
-    
-    const userDataDir = "C:\\Users\\Luxion\\AppData\\Local\\Google\\Chrome\\User Data\\PlaywrightProfile";
 
     broadcastLog(`🚀 CRAWLER PERIODE 1-20 - ${areaName} (Direct API Mode)`);
     broadcastLog(`   🆔 Run ID: ${apiClient.runId}`);
     
-    const browser = await chromium.launchPersistentContext(userDataDir, {
-        headless: true,
-        channel: "chrome",
-        args: [
-            "--start-maximized",
-            "--profile-directory=Default",
-            "--disable-blink-features=AutomationControlled",
-            "--disable-infobars",
-        ],
-    });
+    // ✅ Detect environment: GitHub Actions vs Local
+    const isCI = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true';
+    
+    let browser;
+    if (isCI) {
+        // GitHub Actions: Use regular browser (no persistent context)
+        broadcastLog("🔧 Running in CI environment (GitHub Actions)");
+        browser = await chromium.launch({
+            headless: true,
+            args: [
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-blink-features=AutomationControlled",
+            ],
+        });
+    } else {
+        // Local: Use persistent context with saved session
+        broadcastLog("🔧 Running in local environment");
+        const userDataDir = "C:\\Users\\Luxion\\AppData\\Local\\Google\\Chrome\\User Data\\PlaywrightProfile";
+        browser = await chromium.launchPersistentContext(userDataDir, {
+            headless: true,
+            channel: "chrome",
+            args: [
+                "--start-maximized",
+                "--profile-directory=Default",
+                "--disable-blink-features=AutomationControlled",
+                "--disable-infobars",
+            ],
+        });
+    }
 
-    const page = await browser.newPage();
+    const page = isCI ? await browser.newPage() : browser.pages()[0] || await browser.newPage();
 
     try {
         broadcastLog("🌐 Opening AppSheet...");
@@ -481,19 +500,39 @@ export async function runCrawlPeriod21_30(areaName = "BANDUNG") {
         return { success: true, totalChecked: 0, totalUpdated: 0 };
     }
 
-    const userDataDir = "C:\\Users\\Luxion\\AppData\\Local\\Google\\Chrome\\User Data\\PlaywrightProfile";
-    const browser = await chromium.launchPersistentContext(userDataDir, {
-        headless: true,
-        channel: "chrome",
-        args: [
-            "--start-maximized",
-            "--profile-directory=Default",
-            "--disable-blink-features=AutomationControlled",
-            "--disable-infobars",
-        ],
-    });
+    // ✅ Detect environment: GitHub Actions vs Local
+    const isCI = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true';
+    
+    let browser;
+    if (isCI) {
+        // GitHub Actions: Use regular browser (no persistent context)
+        console.log("🔧 Running in CI environment (GitHub Actions)");
+        browser = await chromium.launch({
+            headless: true,
+            args: [
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-blink-features=AutomationControlled",
+            ],
+        });
+    } else {
+        // Local: Use persistent context with saved session
+        console.log("🔧 Running in local environment");
+        const userDataDir = "C:\\Users\\Luxion\\AppData\\Local\\Google\\Chrome\\User Data\\PlaywrightProfile";
+        browser = await chromium.launchPersistentContext(userDataDir, {
+            headless: true,
+            channel: "chrome",
+            args: [
+                "--start-maximized",
+                "--profile-directory=Default",
+                "--disable-blink-features=AutomationControlled",
+                "--disable-infobars",
+            ],
+        });
+    }
 
-    const page = await browser.newPage();
+    const page = isCI ? await browser.newPage() : browser.pages()[0] || await browser.newPage();
 
     try {
         await page.goto(
@@ -639,14 +678,39 @@ async function checkIfLoggedIn(page) {
 
 async function performLogin(page, areaName) {
     const credentials = CONFIG.credentials[areaName];
-    await page.waitForSelector('[data-testid="Login"]', { timeout: 60000 });
-    await page.click('[data-testid="Login"]');
-    await page.waitForSelector('input[aria-label="Username"]', { timeout: 60000 });
-    await page.fill('input[aria-label="Username"]', credentials.username);
-    await page.fill('input[aria-label="Password"]', credentials.password);
-    await page.click('button:has-text("Login")');
-    await page.waitForSelector("ul[role='navigation']", { timeout: 60000 });
-    console.log("✅ Login success");
+    
+    console.log("🔐 Attempting to login...");
+    
+    // ✅ Step 1: Wait for page to load completely
+    await page.waitForTimeout(3000);
+    
+    // ✅ Step 2: Check if already at AppSheet app (logged in via provider)
+    const isAlreadyInApp = await page.locator("ul[role='navigation']").count() > 0;
+    if (isAlreadyInApp) {
+        console.log("✅ Already logged in (provider authenticated)");
+        return;
+    }
+    
+    // ✅ Step 3: Check if Login button exists (AppSheet login screen)
+    const loginButtonExists = await page.locator('[data-testid="Login"]').count() > 0;
+    
+    if (loginButtonExists) {
+        // Direct AppSheet login (has session/cookies)
+        console.log("📝 Using AppSheet direct login");
+        await page.click('[data-testid="Login"]');
+        await page.waitForSelector('input[aria-label="Username"]', { timeout: 60000 });
+        await page.fill('input[aria-label="Username"]', credentials.username);
+        await page.fill('input[aria-label="Password"]', credentials.password);
+        await page.click('button:has-text("Login")');
+        await page.waitForSelector("ul[role='navigation']", { timeout: 60000 });
+        console.log("✅ Login success");
+    } else {
+        // ❌ Provider selection screen (fresh browser - TIDAK BISA HANDLE OTOMATIS)
+        console.error("❌ Provider selection screen detected!");
+        console.error("⚠️  GitHub Actions cannot handle OAuth provider selection");
+        console.error("💡 Solution: AppSheet needs to be accessed via direct link with auto-login");
+        throw new Error("Cannot login: OAuth provider selection required (not supported in CI)");
+    }
 }
 
 async function waitForSyncComplete(page, maxWaitTimeMs = 120000) {
