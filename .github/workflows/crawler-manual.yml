@@ -43,14 +43,12 @@ jobs:
           node-version: '18'
       
       - name: 📦 Install dependencies
-        working-directory: ./Playwright-crawler
         run: |
           npm ci
           npx playwright install chromium
           npx playwright install-deps chromium
       
       - name: 🔐 Setup environment
-        working-directory: ./Playwright-crawler
         run: |
           echo "NEXTJS_API_URL=${{ secrets.NEXTJS_API_URL }}" >> .env
           echo "CRAWLER_API_KEY=${{ secrets.CRAWLER_API_KEY }}" >> .env
@@ -65,7 +63,6 @@ jobs:
       
       - name: 🚀 Run Crawler - Period 1-20
         if: inputs.period == 'PERIOD_1_20' || inputs.period == 'BOTH'
-        working-directory: ./Playwright-crawler
         run: |
           node -e "
           import('./crawler.js').then(async ({ runCrawlPeriod1_20 }) => {
@@ -78,7 +75,6 @@ jobs:
       
       - name: 🚀 Run Crawler - Period 21-30
         if: inputs.period == 'PERIOD_21_30' || inputs.period == 'BOTH'
-        working-directory: ./Playwright-crawler
         run: |
           node -e "
           import('./crawler.js').then(async ({ runCrawlPeriod21_30 }) => {

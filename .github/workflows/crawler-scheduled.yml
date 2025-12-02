@@ -50,14 +50,12 @@ jobs:
           node-version: '18'
       
       - name: 📦 Install dependencies
-        working-directory: ./Playwright-crawler
         run: |
           npm ci
           npx playwright install chromium
           npx playwright install-deps chromium
       
       - name: 🔐 Setup credentials
-        working-directory: ./Playwright-crawler
         run: |
           echo "NEXTJS_API_URL=${{ secrets.NEXTJS_API_URL }}" >> .env
           echo "CRAWLER_API_KEY=${{ secrets.CRAWLER_API_KEY }}" >> .env
@@ -72,7 +70,6 @@ jobs:
       
       - name: 🚀 Run crawler (Scheduled - All Areas)
         if: github.event_name == 'schedule'
-        working-directory: ./Playwright-crawler
         run: |
           node -e "
           import('./crawler.js').then(async ({ runCrawlPeriod1_20, runCrawlPeriod21_30 }) => {
@@ -101,7 +98,6 @@ jobs:
       
       - name: 🚀 Run crawler (Manual Trigger)
         if: github.event_name == 'workflow_dispatch'
-        working-directory: ./Playwright-crawler
         run: |
           AREA="${{ github.event.inputs.area }}"
           PERIOD="${{ github.event.inputs.period }}"
