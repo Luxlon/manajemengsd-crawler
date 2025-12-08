@@ -2,3 +2,6 @@
 /node_modules
 /backup
 /gakepake
+FLY-DEPLOYMENT-GUIDE.md
+ORACLE-CLOUD-DEPLOYMENT-GUIDE.md
+fly.toml
