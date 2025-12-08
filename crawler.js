@@ -595,32 +595,140 @@ export async function runCrawlPeriod21_30(areaName = "BANDUNG") {
             
             try {
                 await applyFilter(page, "APPROVED", month);
+                await page.waitForTimeout(2000);
+                
+                // Reset scroll to top
+                await page.evaluate(() => {
+                    const tableList = document.querySelector('.TableView__list');
+                    if (tableList) tableList.scrollTop = 0;
+                });
+                await page.waitForTimeout(1500);
                 
                 const updatesToSend = [];
+                const processedIds = new Set();
+                let scrollAttempts = 0;
+                const maxScrollAttempts = 200;
+                let consecutiveNoMatch = 0;
+                const maxConsecutiveNoMatch = 30;
                 
-                for (const item of items) {
-                    totalChecked++;
+                console.log(`  📋 Searching for ${items.length} APPROVED items in table...`);
+                
+                // ✅ SCROLL & SEARCH STRATEGY
+                while (scrollAttempts < maxScrollAttempts && processedIds.size < items.length) {
+                    const visibleRows = await page.locator('span[data-testid="table-view-row"]').all();
+                    let foundMatchInThisScroll = false;
                     
-                    try {
-                        // Click row to open dialog
-                        const row = page.locator(`span[data-testid="table-view-row"]:has-text("${item.id_gedung}")`).first();
-                        const rowCount = await row.count();
-                        
-                        if (rowCount === 0) {
-                            console.log(`   ⏭️ ${item.id_gedung}: NOT FOUND in table`);
-                            updatesToSend.push({
-                                ...item,
-                                Period_21_30: "NOT FOUND"
-                            });
+                    for (const row of visibleRows) {
+                        try {
+                            const isVisible = await row.isVisible();
+                            if (!isVisible) continue;
+                            
+                            const textSpan = row.locator('span[data-testid="text-type-display-span"]');
+                            const text = await textSpan.textContent();
+                            
+                            if (!text) continue;
+                            
+                            const parts = text.split(" - ");
+                            const rowId = parts[0]?.trim();
+                            
+                            if (!rowId || processedIds.has(rowId)) continue;
+                            
+                            // Check if this row matches any of our APPROVED items
+                            const matchedItem = items.find(item => item.id_gedung === rowId);
+                            
+                            if (matchedItem) {
+                                foundMatchInThisScroll = true;
+                                consecutiveNoMatch = 0;
+                                
+                                console.log(`\n  🔍 [${processedIds.size + 1}/${items.length}] Found: ${rowId}`);
+                                
+                                try {
+                                    await row.click();
+                                    await page.waitForTimeout(2000);
+                                    
+                                    const status = await checkPeriod21_30FromDialog(page, month);
+                                    console.log(`  ✅ ${rowId}: ${status}`);
+                                    
+                                    updatesToSend.push({
+                                        Area: matchedItem.area,
+                                        Month: matchedItem.month,
+                                        ID: matchedItem.id_gedung,
+                                        Name: matchedItem.name,
+                                        Type: matchedItem.type,
+                                        Period_1_20: matchedItem.period_1_20,
+                                        Period_21_30: status
+                                    });
+                                    
+                                    // Close dialog
+                                    await page.keyboard.press('Escape');
+                                    await page.waitForTimeout(800);
+                                    
+                                    processedIds.add(rowId);
+                                    totalChecked++;
+                                    
+                                } catch (itemError) {
+                                    console.error(`  ❌ ${rowId}: ERROR - ${itemError.message}`);
+                                    updatesToSend.push({
+                                        Area: matchedItem.area,
+                                        Month: matchedItem.month,
+                                        ID: matchedItem.id_gedung,
+                                        Name: matchedItem.name,
+                                        Type: matchedItem.type,
+                                        Period_1_20: matchedItem.period_1_20,
+                                        Period_21_30: "ERROR"
+                                    });
+                                    
+                                    try {
+                                        await page.keyboard.press('Escape');
+                                        await page.waitForTimeout(500);
+                                    } catch {}
+                                    
+                                    processedIds.add(rowId);
+                                    totalChecked++;
+                                }
+                            }
+                            
+                        } catch (error) {
                             continue;
                         }
+                    }
+                    
+                    // Check if we should stop scrolling
+                    if (!foundMatchInThisScroll) {
+                        consecutiveNoMatch++;
                         
-                        await row.click();
-                        await page.waitForTimeout(2000);
-                        
-                        const status = await checkPeriod21_30FromDialog(page, month);
-                        console.log(`   ✅ ${item.id_gedung}: ${status}`);
-                        
+                        if (consecutiveNoMatch >= maxConsecutiveNoMatch) {
+                            console.log(`\n  ⚠️ No matches found in last ${maxConsecutiveNoMatch} scrolls`);
+                            console.log(`  📊 Processed: ${processedIds.size}/${items.length}`);
+                            break;
+                        }
+                    }
+                    
+                    // Scroll down
+                    await page.evaluate((scrollStep) => {
+                        const tableList = document.querySelector('.TableView__list');
+                        if (tableList) {
+                            tableList.scrollBy({
+                                top: scrollStep,
+                                behavior: 'smooth'
+                            });
+                        }
+                    }, CONFIG.scrollStep);
+                    
+                    await page.waitForTimeout(CONFIG.scrollDelay + 200);
+                    scrollAttempts++;
+                    
+                    if (scrollAttempts % 10 === 0 && processedIds.size < items.length) {
+                        console.log(`  📊 Scroll #${scrollAttempts}: Found ${processedIds.size}/${items.length}`);
+                    }
+                }
+                
+                // Mark unprocessed items as NOT FOUND
+                const unprocessedItems = items.filter(item => !processedIds.has(item.id_gedung));
+                if (unprocessedItems.length > 0) {
+                    console.log(`\n  ⚠️ ${unprocessedItems.length} items NOT FOUND in table:`);
+                    unprocessedItems.forEach(item => {
+                        console.log(`     - ${item.id_gedung}`);
                         updatesToSend.push({
                             Area: item.area,
                             Month: item.month,
@@ -628,21 +736,14 @@ export async function runCrawlPeriod21_30(areaName = "BANDUNG") {
                             Name: item.name,
                             Type: item.type,
                             Period_1_20: item.period_1_20,
-                            Period_21_30: status
+                            Period_21_30: "NOT FOUND"
                         });
-                        
-                        // Close dialog
-                        await page.keyboard.press('Escape');
-                        await page.waitForTimeout(1000);
-                        
-                    } catch (itemError) {
-                        console.error(`   ❌ ${item.id_gedung}: ERROR - ${itemError.message}`);
-                        updatesToSend.push({
-                            ...item,
-                            Period_21_30: "ERROR"
-                        });
-                    }
+                    });
                 }
+                
+                console.log(`\n  📊 Summary for ${month}:`);
+                console.log(`     • Found & Checked: ${processedIds.size}/${items.length}`);
+                console.log(`     • Not Found: ${unprocessedItems.length}`);
                 
                 // Send updates for this month
                 if (updatesToSend.length > 0) {
@@ -1047,9 +1148,17 @@ async function checkPeriod21_30FromDialog(page, expectedMonth) {
         const headerText = await page.locator('[data-testid="slideshow-page-header"] span[data-testid="text-type-display-span"]').first().textContent();
         console.log(`    📋 Dialog opened: ${headerText}`);
         
+        // ✅ CRITICAL: Wait for dialog to be fully rendered and stable
+        await page.waitForTimeout(1500);
+        
         try {
             const bulanDropdown = page.locator('input[aria-label="Bulan"]');
             await bulanDropdown.waitFor({ state: "visible", timeout: 5000 });
+            
+            // ✅ Scroll dropdown into view to ensure it's visible
+            await bulanDropdown.scrollIntoViewIfNeeded();
+            await page.waitForTimeout(500);
+            
             const currentMonth = await bulanDropdown.inputValue();
             
             if (currentMonth !== expectedMonth) {
@@ -1060,8 +1169,12 @@ async function checkPeriod21_30FromDialog(page, expectedMonth) {
                     try {
                         console.log(`    🔽 Attempt ${attempt}: Membuka dropdown & memilih bulan...`);
                         
+                        // ✅ Ensure dropdown is in view before clicking
+                        await bulanDropdown.scrollIntoViewIfNeeded();
+                        await page.waitForTimeout(300);
+                        
                         await bulanDropdown.click({ timeout: 3000 });
-                        await page.waitForTimeout(500);
+                        await page.waitForTimeout(800); // ✅ Increased wait for dropdown animation
                         
                         const options = await page.locator('li[role="option"]').all();
                         
@@ -1077,7 +1190,12 @@ async function checkPeriod21_30FromDialog(page, expectedMonth) {
                             const optionText = await option.textContent();
                             if (optionText && optionText.includes(expectedMonth)) {
                                 console.log(`    🎯 Menemukan opsi: ${optionText}`);
-                                await option.click({ timeout: 2000 });
+                                
+                                // ✅ Scroll option into view before clicking
+                                await option.scrollIntoViewIfNeeded();
+                                await page.waitForTimeout(300);
+                                
+                                await option.click({ timeout: 5000, force: true }); // ✅ Increased timeout + force click
                                 await page.waitForTimeout(1000);
                                 monthFound = true;
                                 break;
@@ -1087,11 +1205,11 @@ async function checkPeriod21_30FromDialog(page, expectedMonth) {
                         if (!monthFound) {
                             console.log(`    ⚠️ Attempt ${attempt}: Bulan ${expectedMonth} tidak ditemukan di list`);
                             await page.keyboard.press('Escape');
-                            await page.waitForTimeout(300);
+                            await page.waitForTimeout(500);
                             continue;
                         }
                         
-                        await page.waitForTimeout(800);
+                        await page.waitForTimeout(1000);
                         const newMonth = await bulanDropdown.inputValue();
                         if (newMonth === expectedMonth) {
                             console.log(`    ✅ Berhasil mengubah bulan ke ${expectedMonth}`);
@@ -1105,7 +1223,7 @@ async function checkPeriod21_30FromDialog(page, expectedMonth) {
                         console.log(`    ⚠️ Attempt ${attempt} gagal: ${error.message}`);
                         try {
                             await page.keyboard.press('Escape');
-                            await page.waitForTimeout(300);
+                            await page.waitForTimeout(500);
                         } catch {}
                     }
                 }
