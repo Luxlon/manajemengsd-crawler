@@ -1,0 +1,52 @@
+# Fly.io Configuration for AppSheet Crawler
+# Persistent browser storage for OAuth cookies
+
+app = "manajemen-gsd-crawler"
+
+[build]
+  dockerfile = "Dockerfile"
+
+# Environment variables (set via: fly secrets set KEY=VALUE)
+[env]
+  PORT = "4000"
+
+# Persistent volume for browser data (CRITICAL for OAuth!)
+[mounts]
+  source = "playwright_data"
+  destination = "/app/playwright-data"
+
+# HTTP service configuration
+[[services]]
+  internal_port = 4000
+  protocol = "tcp"
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  # Health check
+  [[services.http_checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/health"
+
+  [[services.ports]]
+    port = 80
+    handlers = ["http"]
+    force_https = true
+
+  [[services.ports]]
+    port = 443
+    handlers = ["tls", "http"]
+
+  [services.concurrency]
+    type = "connections"
+    hard_limit = 25
+    soft_limit = 20
+
+# Resource allocation
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1

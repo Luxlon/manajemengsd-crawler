@@ -303,7 +303,7 @@ export async function runCrawlPeriod1_20(areaName = "BANDUNG", runId = null) {
         broadcastLog("🔧 Running in local environment");
         const userDataDir = "C:\\Users\\Luxion\\AppData\\Local\\Google\\Chrome\\User Data\\PlaywrightProfile";
         browser = await chromium.launchPersistentContext(userDataDir, {
-            headless: false,
+            headless: true,
             channel: "chrome",
             args: [
                 "--start-maximized",
@@ -317,7 +317,7 @@ export async function runCrawlPeriod1_20(areaName = "BANDUNG", runId = null) {
         broadcastLog("🔧 Running on Render.com (persistent browser)");
         const userDataDir = "/app/playwright-data";
         browser = await chromium.launchPersistentContext(userDataDir, {
-            headless: false,
+            headless: true,
             args: [
                 "--no-sandbox",
                 "--disable-setuid-sandbox",
@@ -531,7 +531,7 @@ export async function runCrawlPeriod21_30(areaName = "BANDUNG") {
         console.log("🔧 Running in local environment");
         const userDataDir = "C:\\Users\\Luxion\\AppData\\Local\\Google\\Chrome\\User Data\\PlaywrightProfile";
         browser = await chromium.launchPersistentContext(userDataDir, {
-            headless: false,
+            headless: true,
             channel: "chrome",
             args: [
                 "--start-maximized",
@@ -545,7 +545,7 @@ export async function runCrawlPeriod21_30(areaName = "BANDUNG") {
         console.log("🔧 Running on Render.com (persistent browser)");
         const userDataDir = "/app/playwright-data";
         browser = await chromium.launchPersistentContext(userDataDir, {
-            headless: false,
+            headless: true,
             args: [
                 "--no-sandbox",
                 "--disable-setuid-sandbox",
