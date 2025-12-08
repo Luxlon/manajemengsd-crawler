@@ -303,7 +303,7 @@ export async function runCrawlPeriod1_20(areaName = "BANDUNG", runId = null) {
         broadcastLog("🔧 Running in local environment");
         const userDataDir = "C:\\Users\\Luxion\\AppData\\Local\\Google\\Chrome\\User Data\\PlaywrightProfile";
         browser = await chromium.launchPersistentContext(userDataDir, {
-            headless: true,
+            headless: false,
             channel: "chrome",
             args: [
                 "--start-maximized",
@@ -317,7 +317,7 @@ export async function runCrawlPeriod1_20(areaName = "BANDUNG", runId = null) {
         broadcastLog("🔧 Running on Render.com (persistent browser)");
         const userDataDir = "/app/playwright-data";
         browser = await chromium.launchPersistentContext(userDataDir, {
-            headless: true,
+            headless: false,
             args: [
                 "--no-sandbox",
                 "--disable-setuid-sandbox",
@@ -344,12 +344,22 @@ export async function runCrawlPeriod1_20(areaName = "BANDUNG", runId = null) {
         );
 
         const isLoggedIn = await checkIfLoggedIn(page);
-        if (!isLoggedIn) {
-            broadcastLog("🔒 Logging in...");
-            await performLogin(page, areaName);
-        } else {
-            broadcastLog("✅ Already logged in");
+        if (isLoggedIn) {
+            // ✅ CRITICAL: Always logout first to ensure correct user
+            broadcastLog("⚠️  Detected existing session - Logging out to ensure correct user...");
+            await performLogout(page);
+            await page.waitForTimeout(2000);
+            
+            // Reload page after logout
+            broadcastLog("🔄 Reloading page after logout...");
+            await page.goto(
+                "https://www.appsheet.com/start/c08488d5-d2b3-4411-b6cc-8f387c028e7c?platform=desktop#appName=SLAMtes-320066460",
+                { waitUntil: "networkidle", timeout: 60000 }
+            );
         }
+        
+        broadcastLog("🔒 Logging in as " + areaName + "...");
+        await performLogin(page, areaName);
 
         await waitForSyncComplete(page, 120000);
         await navigateToChecklist(page);
@@ -521,7 +531,7 @@ export async function runCrawlPeriod21_30(areaName = "BANDUNG") {
         console.log("🔧 Running in local environment");
         const userDataDir = "C:\\Users\\Luxion\\AppData\\Local\\Google\\Chrome\\User Data\\PlaywrightProfile";
         browser = await chromium.launchPersistentContext(userDataDir, {
-            headless: true,
+            headless: false,
             channel: "chrome",
             args: [
                 "--start-maximized",
@@ -535,7 +545,7 @@ export async function runCrawlPeriod21_30(areaName = "BANDUNG") {
         console.log("🔧 Running on Render.com (persistent browser)");
         const userDataDir = "/app/playwright-data";
         browser = await chromium.launchPersistentContext(userDataDir, {
-            headless: true,
+            headless: false,
             args: [
                 "--no-sandbox",
                 "--disable-setuid-sandbox",
@@ -702,15 +712,25 @@ async function checkIfLoggedIn(page) {
 async function performLogin(page, areaName) {
     const credentials = CONFIG.credentials[areaName];
     
+    // ✅ Debug: Verify credentials loaded
+    if (!credentials || !credentials.username || !credentials.password) {
+        console.error("❌ Credentials missing for area:", areaName);
+        console.error("   Loaded credentials:", credentials);
+        throw new Error(`Credentials not found for area: ${areaName}`);
+    }
+    
     console.log("🔐 Attempting to login...");
+    console.log("   👤 Area:", areaName);
+    console.log("   👤 Username:", credentials.username);
     
     // ✅ Step 1: Wait for page to load completely
     await page.waitForTimeout(3000);
     
-    // ✅ Step 2: Check if already at AppSheet app (logged in via provider)
-    const isAlreadyInApp = await page.locator("ul[role='navigation']").count() > 0;
-    if (isAlreadyInApp) {
-        console.log("✅ Already logged in (provider authenticated)");
+    // ✅ Step 2: Check if already inside AppSheet app (checklist button exists)
+    // NOTE: Checklist button only appears AFTER successful AppSheet login
+    const checklistButtonExists = await page.locator('div[role="button"] i.fa-check').count() > 0;
+    if (checklistButtonExists) {
+        console.log("✅ Already logged in to AppSheet (checklist button found)");
         return;
     }
     
@@ -722,11 +742,19 @@ async function performLogin(page, areaName) {
         console.log("📝 Using AppSheet direct login");
         await page.click('[data-testid="Login"]');
         await page.waitForSelector('input[aria-label="Username"]', { timeout: 60000 });
+        
+        console.log("   ⌨️  Filling username:", credentials.username);
         await page.fill('input[aria-label="Username"]', credentials.username);
+        
+        console.log("   ⌨️  Filling password: ***");
         await page.fill('input[aria-label="Password"]', credentials.password);
+        
+        console.log("   🖱️  Clicking Login button...");
         await page.click('button:has-text("Login")');
+        
+        console.log("   ⏳ Waiting for navigation menu...");
         await page.waitForSelector("ul[role='navigation']", { timeout: 60000 });
-        console.log("✅ Login success");
+        console.log("✅ Login success for area:", areaName);
     } else {
         // ❌ Provider selection screen (fresh browser - TIDAK BISA HANDLE OTOMATIS)
         console.error("❌ Provider selection screen detected!");
