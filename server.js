@@ -113,18 +113,21 @@ app.post("/run-crawler-period-1-20", async (req, res) => {
 // ========== ENDPOINT PERIODE 21-30 (Direct API) ==========
 app.post("/run-crawler-period-21-30", async (req, res) => {
   try {
-    const { area = "BANDUNG" } = req.body;
+    const { area = "BANDUNG", onlyUnapproved = true } = req.body; // Terima parameter onlyUnapproved
     console.log(`🚀 Starting crawler PERIODE 21-30 for ${area}...`);
+    console.log(`⚙️  Mode: ${onlyUnapproved ? 'Optimized (only unapproved)' : 'Full (all data)'}`);
     
-    const result = await runCrawlPeriod21_30(area);
+    const result = await runCrawlPeriod21_30(area, onlyUnapproved); // Pass parameter ke crawler
     
     res.json({
       success: true,
-      message: `Crawling periode 21-30 completed for ${area}`,
+      message: `Crawling periode 21-30 completed for ${area} (${result.mode} mode)`,
       area: area,
       runId: result.runId,
       totalChecked: result.totalChecked,
       totalUpdated: result.totalUpdated,
+      totalSkipped: result.totalSkipped,
+      mode: result.mode
     });
   } catch (err) {
     console.error("❌ Error:", err);
@@ -135,7 +138,7 @@ app.post("/run-crawler-period-21-30", async (req, res) => {
 // ========== ENDPOINT BOTH PERIODS (Sequential) ==========
 app.post("/run-crawler-both", async (req, res) => {
   try {
-    const { area = "BANDUNG" } = req.body;
+    const { area = "BANDUNG", onlyUnapproved = true } = req.body; // Terima parameter untuk periode 21-30
     
     console.log(`🚀 Starting crawler BOTH PERIODS for ${area}...`);
     
@@ -146,7 +149,8 @@ app.post("/run-crawler-both", async (req, res) => {
     
     // Phase 2: Periode 21-30
     console.log("📅 PHASE 2: Periode 21-30...");
-    const result21_30 = await runCrawlPeriod21_30(area);
+    console.log(`⚙️  Mode: ${onlyUnapproved ? 'Optimized (only unapproved)' : 'Full (all data)'}`);
+    const result21_30 = await runCrawlPeriod21_30(area, onlyUnapproved); // Pass parameter
     console.log("✅ Periode 21-30 completed!");
 
     res.json({
@@ -163,6 +167,8 @@ app.post("/run-crawler-both", async (req, res) => {
         runId: result21_30.runId,
         totalChecked: result21_30.totalChecked,
         totalUpdated: result21_30.totalUpdated,
+        totalSkipped: result21_30.totalSkipped,
+        mode: result21_30.mode
       }
     });
     

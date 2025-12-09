@@ -505,19 +505,67 @@ export async function runCrawlPeriod1_20(areaName = "BANDUNG", runId = null) {
 }
 
 // ========== CRAWLER PERIODE 21-30 (Direct API) ==========
-export async function runCrawlPeriod21_30(areaName = "BANDUNG") {
+/**
+ * @param {string} areaName - Area to crawl (BANDUNG, CORPU, etc.)
+ * @param {boolean} onlyUnapproved - If true, only crawl items that are NOT YET APPROVED in period 21-30
+ *                                    If false, crawl ALL APPROVED items from period 1-20
+ *                                    Default: true (optimized mode - skip already approved)
+ */
+export async function runCrawlPeriod21_30(areaName = "BANDUNG", onlyUnapproved = true) {
     CONFIG.currentArea = areaName;
     const apiClient = new CrawlerAPIClient(CONFIG.nextjsApiUrl, CONFIG.apiKey);
     
     console.log(`🚀 CRAWLER PERIODE 21-30 - ${areaName} (Direct API Mode)`);
     console.log(`   🆔 Run ID: ${apiClient.runId}`);
+    console.log(`   ⚙️  Mode: ${onlyUnapproved ? 'Optimized (only unapproved)' : 'Full (all data)'}`);
     
-    // ✅ Fetch APPROVED from API
+    // ✅ Fetch APPROVED data from API (periode 1-20)
     const approvedData = await apiClient.fetchApprovedData(areaName);
     
     if (approvedData.length === 0) {
         console.log("⚠️ No APPROVED data to check");
-        return { success: true, totalChecked: 0, totalUpdated: 0 };
+        return { success: true, totalChecked: 0, totalUpdated: 0, totalSkipped: 0 };
+    }
+    
+    let dataToCrawl;
+    let skippedCount = 0;
+    
+    if (onlyUnapproved) {
+        // ✅ OPTIMIZATION: Filter hanya data yang BELUM APPROVED di periode 21-30
+        const totalBeforeFilter = approvedData.length;
+        dataToCrawl = approvedData.filter(item => {
+            // Crawl jika period_21_30 adalah:
+            // - "NONE" (belum pernah dicek)
+            // - "NOT APPROVED" (pernah dicek tapi belum approve)
+            // - "NOT FOUND" (tidak ditemukan di tabel sebelumnya)
+            // - "ERROR" (ada error sebelumnya)
+            // Skip jika sudah "APPROVED"
+            return item.period_21_30 !== "APPROVED";
+        });
+        
+        skippedCount = totalBeforeFilter - dataToCrawl.length;
+        
+        console.log(`\n📊 Data Filter Summary (Optimized Mode):`);
+        console.log(`   • Total APPROVED (period 1-20): ${totalBeforeFilter}`);
+        console.log(`   • Already APPROVED (period 21-30): ${skippedCount} (skipped)`);
+        console.log(`   • Need to check: ${dataToCrawl.length}`);
+        
+        if (dataToCrawl.length === 0) {
+            console.log("\n✅ All data already APPROVED in period 21-30!");
+            console.log("   No crawling needed - All done! 🎉");
+            return { success: true, totalChecked: 0, totalUpdated: 0, totalSkipped: skippedCount };
+        }
+        
+        console.log(`\n⚡ Starting optimized crawl (${dataToCrawl.length} items)...\n`);
+    } else {
+        // 🔄 FULL MODE: Crawl semua data APPROVED dari periode 1-20
+        dataToCrawl = approvedData;
+        skippedCount = 0;
+        
+        console.log(`\n📊 Data Summary (Full Mode):`);
+        console.log(`   • Total APPROVED (period 1-20): ${dataToCrawl.length}`);
+        console.log(`   • Will check all items (no filter applied)`);
+        console.log(`\n🔄 Starting full crawl (${dataToCrawl.length} items)...\n`);
     }
 
     // ✅ Detect environment
@@ -579,9 +627,9 @@ export async function runCrawlPeriod21_30(areaName = "BANDUNG") {
         await navigateToChecklist(page);
         await waitForSyncComplete(page, 120000);
 
-        // Group by month
+        // Group by month (using filtered data)
         const approvedByMonth = {};
-        for (const item of approvedData) {
+        for (const item of dataToCrawl) {
             if (!approvedByMonth[item.month]) approvedByMonth[item.month] = [];
             approvedByMonth[item.month].push(item);
         }
@@ -773,6 +821,13 @@ export async function runCrawlPeriod21_30(areaName = "BANDUNG") {
         console.log(`   📊 Checked: ${totalChecked}`);
         console.log(`   ✅ Updated: ${totalUpdated}`);
         
+        if (onlyUnapproved) {
+            console.log(`   ⏭️  Skipped (already APPROVED): ${skippedCount}`);
+            console.log(`   ⚡ Time saved by skipping: ~${(skippedCount * 3).toFixed(0)} seconds`);
+        } else {
+            console.log(`   🔄 Mode: Full crawl (all data checked)`);
+        }
+        
         await performLogout(page);
         await page.waitForTimeout(120000);
 
@@ -780,16 +835,19 @@ export async function runCrawlPeriod21_30(areaName = "BANDUNG") {
             success: true,
             runId: apiClient.runId,
             totalChecked: totalChecked,
-            totalUpdated: totalUpdated
+            totalUpdated: totalUpdated,
+            totalSkipped: skippedCount,
+            mode: onlyUnapproved ? 'optimized' : 'full'
         };
         
     } catch (error) {
         console.error("❌ FATAL ERROR:", error.message);
         throw error;
     } finally {
-        // Only close if browser is regular (not persistent context)
-        if (browser && !(isLocal || isRender)) {
+        // Always close browser (persistent context will just close the session, not delete data)
+        if (browser) {
             await browser.close();
+            console.log("✅ Browser closed");
         }
     }
 }
