@@ -915,11 +915,72 @@ async function performLogin(page, areaName) {
         await page.waitForSelector("ul[role='navigation']", { timeout: 60000 });
         console.log("✅ Login success for area:", areaName);
     } else {
-        // ❌ Provider selection screen (fresh browser - TIDAK BISA HANDLE OTOMATIS)
-        console.error("❌ Provider selection screen detected!");
-        console.error("⚠️  GitHub Actions cannot handle OAuth provider selection");
-        console.error("💡 Solution: AppSheet needs to be accessed via direct link with auto-login");
-        throw new Error("Cannot login: OAuth provider selection required (not supported in CI)");
+        // ✅ Provider selection screen - Handle Google OAuth automatically
+        console.log("🔐 OAuth provider selection screen detected");
+        console.log("   🎯 Looking for Google sign-in button...");
+        
+        try {
+            // Wait for provider selection buttons to appear
+            await page.waitForTimeout(2000);
+            
+            // Try to find Google sign-in button (berbagai kemungkinan selector)
+            const googleButtonSelectors = [
+                'button:has-text("Sign in with Google")',
+                'button:has-text("Continue with Google")',
+                'a:has-text("Sign in with Google")',
+                'a:has-text("Continue with Google")',
+                '[data-provider="google"]',
+                'button[aria-label*="Google"]',
+                'a[aria-label*="Google"]',
+            ];
+            
+            let googleButtonFound = false;
+            for (const selector of googleButtonSelectors) {
+                const buttonCount = await page.locator(selector).count();
+                if (buttonCount > 0) {
+                    console.log(`   ✅ Found Google button with selector: ${selector}`);
+                    console.log("   🖱️  Clicking Google sign-in...");
+                    await page.locator(selector).first().click();
+                    googleButtonFound = true;
+                    break;
+                }
+            }
+            
+            if (!googleButtonFound) {
+                console.error("   ❌ Google sign-in button not found!");
+                console.log("   📸 Taking screenshot for debugging...");
+                await page.screenshot({ path: '/app/oauth-screen.png', fullPage: true });
+                throw new Error("Google sign-in button not found on provider selection screen");
+            }
+            
+            // Wait for Google OAuth redirect or login form
+            console.log("   ⏳ Waiting for Google OAuth flow...");
+            await page.waitForTimeout(5000);
+            
+            // Check if we need to enter credentials or if already logged in via persistent context
+            const navigationMenu = await page.locator("ul[role='navigation']").count();
+            if (navigationMenu > 0) {
+                console.log("✅ OAuth success - Already logged in via persistent context!");
+                return;
+            }
+            
+            // If Google login form appears, handle it
+            const googleEmailInput = await page.locator('input[type="email"]').count();
+            if (googleEmailInput > 0) {
+                console.log("   📧 Google email form detected - Manual intervention required!");
+                console.log("   ⚠️  Cannot auto-fill Google credentials (security restriction)");
+                throw new Error("Google OAuth requires manual authentication - Use persistent context with saved session");
+            }
+            
+            // Wait for final redirect back to AppSheet
+            console.log("   ⏳ Waiting for redirect to AppSheet...");
+            await page.waitForSelector("ul[role='navigation']", { timeout: 60000 });
+            console.log("✅ OAuth login success!");
+            
+        } catch (error) {
+            console.error("❌ OAuth flow failed:", error.message);
+            throw new Error(`OAuth provider selection failed: ${error.message}`);
+        }
     }
 }
 
