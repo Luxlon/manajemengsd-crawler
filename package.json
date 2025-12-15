@@ -13,6 +13,7 @@
     "extract-oauth": "node extract-oauth-session.js",
     "extract-oauth-manual": "powershell -ExecutionPolicy Bypass -File manual-oauth-extract.ps1",
     "convert-cookies": "node convert-cookies.js",
+    "fix-oauth": "node fix-oauth-session.js",
     "prepare-env": "powershell -ExecutionPolicy Bypass -File prepare-env-var.ps1",
     "logs": "tail -f logs/crawler-$(date +%Y-%m-%d).log",
     "logs:history": "cat logs/job-history.jsonl | npx json"
