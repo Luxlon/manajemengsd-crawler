@@ -336,6 +336,38 @@ export async function runCrawlPeriod1_20(areaName = "BANDUNG", runId = null) {
         ? (browser.pages()[0] || await browser.newPage())
         : await browser.newPage();
 
+    // ✅ Load pre-seeded OAuth session if available (for fresh Render deploys)
+    if (isRender && process.env.OAUTH_SESSION_DATA) {
+        try {
+            broadcastLog("🔐 Loading pre-seeded OAuth session...");
+            const sessionData = JSON.parse(process.env.OAUTH_SESSION_DATA);
+            
+            // Add cookies
+            if (sessionData.cookies && sessionData.cookies.length > 0) {
+                await page.context().addCookies(sessionData.cookies);
+                broadcastLog(`   ✅ Loaded ${sessionData.cookies.length} cookies`);
+            }
+            
+            // Navigate to AppSheet first before setting localStorage
+            await page.goto("https://www.appsheet.com", { waitUntil: "domcontentloaded" });
+            
+            // Set localStorage
+            if (sessionData.localStorage) {
+                await page.evaluate((data) => {
+                    for (const [key, value] of Object.entries(data)) {
+                        window.localStorage.setItem(key, value);
+                    }
+                }, sessionData.localStorage);
+                broadcastLog(`   ✅ Loaded localStorage data`);
+            }
+            
+            broadcastLog("   ✅ Pre-seeded session loaded successfully!");
+        } catch (error) {
+            broadcastLog(`   ⚠️ Failed to load pre-seeded session: ${error.message}`);
+            broadcastLog("   → Will use persistent context instead");
+        }
+    }
+
     try {
         broadcastLog("🌐 Opening AppSheet...");
         await page.goto(
@@ -611,6 +643,34 @@ export async function runCrawlPeriod21_30(areaName = "BANDUNG", onlyUnapproved =
     const page = (isLocal || isRender) 
         ? (browser.pages()[0] || await browser.newPage())
         : await browser.newPage();
+
+    // ✅ Load pre-seeded OAuth session if available (for fresh Render deploys)
+    if (isRender && process.env.OAUTH_SESSION_DATA) {
+        try {
+            console.log("🔐 Loading pre-seeded OAuth session...");
+            const sessionData = JSON.parse(process.env.OAUTH_SESSION_DATA);
+            
+            if (sessionData.cookies && sessionData.cookies.length > 0) {
+                await page.context().addCookies(sessionData.cookies);
+                console.log(`   ✅ Loaded ${sessionData.cookies.length} cookies`);
+            }
+            
+            await page.goto("https://www.appsheet.com", { waitUntil: "domcontentloaded" });
+            
+            if (sessionData.localStorage) {
+                await page.evaluate((data) => {
+                    for (const [key, value] of Object.entries(data)) {
+                        window.localStorage.setItem(key, value);
+                    }
+                }, sessionData.localStorage);
+                console.log(`   ✅ Loaded localStorage data`);
+            }
+            
+            console.log("   ✅ Pre-seeded session loaded successfully!");
+        } catch (error) {
+            console.log(`   ⚠️ Failed to load pre-seeded session: ${error.message}`);
+        }
+    }
 
     try {
         await page.goto(

@@ -10,6 +10,7 @@
     "test": "node crawler.js",
     "test:period1": "node -e \"import('./crawler.js').then(m => m.runCrawlPeriod1_20('BANDUNG'))\"",
     "test:period2": "node -e \"import('./crawler.js').then(m => m.runCrawlPeriod21_30('BANDUNG'))\"",
+    "extract-oauth": "node extract-oauth-session.js",
     "logs": "tail -f logs/crawler-$(date +%Y-%m-%d).log",
     "logs:history": "cat logs/job-history.jsonl | npx json"
   },
