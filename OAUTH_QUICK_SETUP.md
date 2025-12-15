@@ -1,6 +1,7 @@
 # 🔐 Setup OAuth untuk Render.com (GRATIS - Semi-Manual)
 
 ## Masalah
+
 Render.com free tier mereset `/app/playwright-data` setiap deploy, sehingga Google OAuth session hilang.
 
 ## Solusi: Pre-Seeded Session (100% Gratis!)
@@ -13,6 +14,7 @@ node extract-oauth-session.js
 ```
 
 Script akan:
+
 1. Membuka browser Chrome
 2. Meminta Anda login manual ke Google
 3. Extract cookies & localStorage
@@ -26,10 +28,12 @@ Script akan:
 2. **Copy seluruh isinya**
 3. **Buka Render.com Dashboard** → Pilih service `crawler-service`
 4. **Environment Variables** → Add new variable:
+
    - **Key:** `OAUTH_SESSION_DATA`
-   - **Value:** *Paste seluruh content oauth-session.json (sebagai satu baris JSON)*
-   
+   - **Value:** _Paste seluruh content oauth-session.json (sebagai satu baris JSON)_
+
    **Tip:** Minify JSON dulu agar tidak terlalu panjang:
+
    ```powershell
    # Di PowerShell
    Get-Content oauth-session.json | ConvertFrom-Json | ConvertTo-Json -Compress | Set-Clipboard
@@ -40,6 +44,7 @@ Script akan:
 ### Langkah 3: Test Crawler
 
 Panggil API dari dashboard Next.js Anda untuk trigger crawler. Crawler akan:
+
 1. Load cookies & localStorage dari environment variable
 2. Auto-login ke AppSheet (skip OAuth flow)
 3. Mulai crawling
@@ -66,15 +71,18 @@ Jika tidak mau repeat setup setiap expire:
 ## Troubleshooting
 
 **Error: "Google sign-in button not found"**
+
 - Session sudah expire
 - Ulangi extraction dengan `node extract-oauth-session.js`
 - Update environment variable `OAUTH_SESSION_DATA`
 
 **Error: "Cannot login: OAuth provider selection required"**
+
 - `OAUTH_SESSION_DATA` tidak di-set atau invalid
 - Pastikan JSON format benar (single line, no line breaks)
 
 **Error: JSON parse error in environment variable**
+
 - JSON tidak valid atau ada karakter escape yang salah
 - Gunakan JSON minifier sebelum paste
 

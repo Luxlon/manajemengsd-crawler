@@ -1,6 +1,7 @@
 # OAuth Setup Guide untuk Render.com (GRATIS)
 
 ## Masalah
+
 Setiap kali redeploy Render.com (free tier), directory `/app/playwright-data` direset, sehingga Google OAuth session hilang dan crawler tidak bisa auto-login.
 
 ## Solusi Semi-Manual (100% GRATIS)
@@ -16,18 +17,19 @@ Jika Render.com support SSH (available di free tier untuk beberapa menit):
 2. **Buka Shell/SSH** → Klik tombol "Shell" di dashboard Render
 
 3. **Jalankan crawler sekali dengan manual intervention:**
+
    ```bash
    # Install xvfb untuk virtual display (headless mode tidak bisa manual click)
    apt-get update && apt-get install -y xvfb
-   
+
    # Set display virtual
    export DISPLAY=:99
    Xvfb :99 -screen 0 1920x1080x24 &
-   
+
    # Temporary: Ubah headless mode ke false
    # (Edit crawler.js line ~319 atau ~584)
    sed -i 's/headless: true/headless: false/g' crawler.js
-   
+
    # Jalankan crawler (akan gagal di OAuth tapi browser terbuka)
    node -e "import('./crawler.js').then(m => m.runCrawlPeriod1_20('BANDUNG'))"
    ```
@@ -49,10 +51,11 @@ Karena Render.com free tier sulit untuk manual intervention, kita bisa:
 **A. Setup Local untuk Generate Persistent Context:**
 
 1. **Di komputer lokal Windows, jalankan:**
+
    ```powershell
    # Buat direktori temporary untuk simulate Render environment
    mkdir C:\temp\playwright-render-session
-   
+
    # Edit crawler.js sementara untuk local testing:
    # Ganti line ~584:
    # const userDataDir = "/app/playwright-data";
@@ -61,6 +64,7 @@ Karena Render.com free tier sulit untuk manual intervention, kita bisa:
    ```
 
 2. **Jalankan crawler lokal:**
+
    ```powershell
    npm run test:period1
    ```
@@ -80,6 +84,7 @@ Karena Render.com free tier sulit untuk manual intervention, kita bisa:
 Jika budget sangat terbatas tapi perlu reliability:
 
 1. **Attach Persistent Disk** di Render.com:
+
    - Dashboard → Service Settings → Disks
    - Create disk: 1GB ($0.25/month)
    - Mount path: `/app/playwright-data`
@@ -102,16 +107,24 @@ Jika budget sangat terbatas tapi perlu reliability:
 1. **Login sekali di lokal**, ambil cookies/localStorage
 
 2. **Inject via code** sebelum navigate:
+
    ```javascript
    // Di crawler.js, setelah browser.newPage()
-   await page.context().addCookies([
-     { name: 'google_auth', value: process.env.GOOGLE_AUTH_COOKIE, domain: '.appsheet.com' }
-   ]);
+   await page
+     .context()
+     .addCookies([
+       {
+         name: "google_auth",
+         value: process.env.GOOGLE_AUTH_COOKIE,
+         domain: ".appsheet.com",
+       },
+     ]);
    ```
 
 3. **Set environment variable** di Render.com dengan cookie value
 
 ⚠️ **Masalah:**
+
 - Cookies expire (perlu refresh berkala)
 - Security risk (cookie di environment variable)
 
@@ -129,6 +142,7 @@ Jika budget sangat terbatas tapi perlu reliability:
 4. Session tersimpan dan reusable hingga redeploy berikutnya
 
 **Untuk Production (Recommended):**
+
 - Gunakan **Render Persistent Disk** ($0.25/month)
 - One-time setup, no maintenance
 - 100% automated selamanya
@@ -138,6 +152,7 @@ Jika budget sangat terbatas tapi perlu reliability:
 ## Current Implementation
 
 Crawler sudah **auto-handle OAuth**:
+
 - ✅ Auto-click "Sign in with Google" button
 - ✅ Jika persistent context punya session → Auto-login berhasil
 - ❌ Jika persistent context kosong → Manual intervention needed (first time only)
