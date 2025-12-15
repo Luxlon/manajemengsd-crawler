@@ -60,13 +60,14 @@ RUN npx playwright install chromium
 # Copy application code
 COPY . .
 
-# Create directory for persistent browser data
+# Create directory for persistent browser USER DATA (OAuth sessions)
 # Render.com free tier: Data akan hilang saat redeploy
 # Untuk persist OAuth, gunakan Render Persistent Disk ($0.25/GB/month)
 RUN mkdir -p /app/playwright-data
 
-# Set environment variable for Playwright to use persistent data
-ENV PLAYWRIGHT_BROWSERS_PATH=/app/playwright-data
+# NOTE: DO NOT set PLAYWRIGHT_BROWSERS_PATH here!
+# Browser binaries stay in default Playwright location (~/.cache/ms-playwright)
+# /app/playwright-data is ONLY for user data dir (persistent OAuth context)
 
 # Expose port
 EXPOSE 4000
