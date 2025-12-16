@@ -382,39 +382,58 @@ export async function runCrawlPeriod1_20(areaName = "BANDUNG", runId = null) {
             { waitUntil: "networkidle", timeout: 60000 }
         );
         
-        // ✅ Wait for page to stabilize and check actual state
-        await page.waitForTimeout(3000);
+        // ✅ Wait for page to stabilize
+        broadcastLog("   ⏳ Waiting for page to fully load...");
+        await page.waitForTimeout(5000);
         
-        // ✅ DEBUG: Log current URL and page state
+        // ✅ DEBUG: Log current URL
         const currentUrl = page.url();
         broadcastLog(`   📍 Current URL: ${currentUrl}`);
         
-        // ✅ Check multiple indicators of login state
-        const checklistButton = await page.locator('div[role="button"] i.fa-check').count();
-        const logoutButton = await page.locator('span[data-testonly-action="logout"]').count();
-        const loginButton = await page.locator('div.GenericActionButton__paddington:has(i.fa-sign-in-alt)').count();
-        const navigationMenu = await page.locator("ul[role='navigation']").count();
+        // ✅ RETRY LOOP: Check page state with retries (page might still be loading)
+        let pageState = 'unknown';
+        let retryCount = 0;
+        const maxRetries = 5;
         
-        broadcastLog(`   🔍 Page state check:`);
-        broadcastLog(`      - Checklist button: ${checklistButton > 0 ? '✅ Found' : '❌ Not found'}`);
-        broadcastLog(`      - Logout button: ${logoutButton > 0 ? '✅ Found' : '❌ Not found'}`);
-        broadcastLog(`      - Login button: ${loginButton > 0 ? '✅ Found' : '❌ Not found'}`);
-        broadcastLog(`      - Navigation menu: ${navigationMenu > 0 ? '✅ Found' : '❌ Not found'}`);
-
-        // ✅ Determine if already logged in
-        const isFullyLoggedIn = checklistButton > 0 || (navigationMenu > 0 && logoutButton > 0);
+        while (pageState === 'unknown' && retryCount < maxRetries) {
+            retryCount++;
+            broadcastLog(`   🔍 Page state check (attempt ${retryCount}/${maxRetries})...`);
+            
+            // Check multiple indicators
+            const checklistButton = await page.locator('div[role="button"] i.fa-check').count();
+            const logoutButton = await page.locator('span[data-testonly-action="logout"]').count();
+            const loginButton = await page.locator('div.GenericActionButton__paddington:has(i.fa-sign-in-alt)').count();
+            const navigationMenu = await page.locator("ul[role='navigation']").count();
+            const googleButton = await page.locator('button#Google').count();
+            const oauthLoginPage = currentUrl.includes('/Account/Login');
+            
+            broadcastLog(`      - Checklist: ${checklistButton} | Logout: ${logoutButton} | Login: ${loginButton} | Nav: ${navigationMenu} | Google: ${googleButton}`);
+            
+            if (checklistButton > 0) {
+                pageState = 'logged_in_app';
+                broadcastLog("   ✅ Already logged in! (checklist button found)");
+            } else if (logoutButton > 0 || navigationMenu > 0) {
+                pageState = 'logged_in_menu';
+                broadcastLog("   ✅ Already logged in! (nav menu found)");
+            } else if (oauthLoginPage || googleButton > 0) {
+                pageState = 'oauth_login';
+                broadcastLog("   🔐 OAuth login page detected");
+            } else if (loginButton > 0) {
+                pageState = 'native_login';
+                broadcastLog("   🔒 Native login button detected");
+            } else {
+                // Still unknown - wait and retry
+                if (retryCount < maxRetries) {
+                    broadcastLog(`   ⏳ Page still loading, waiting 3s...`);
+                    await page.waitForTimeout(3000);
+                }
+            }
+        }
         
-        if (isFullyLoggedIn) {
-            broadcastLog("✅ Already logged in! Checking if correct user...");
-            // Check if correct user - for now, proceed with existing session
-            // In future, verify username matches
-        } else if (loginButton > 0) {
-            // AppSheet native login screen
-            broadcastLog("🔒 AppSheet login screen detected");
-            broadcastLog("🔒 Logging in as " + areaName + "...");
-            await performLogin(page, areaName);
-        } else {
-            // Need to handle OAuth or other login flow
+        // ✅ Handle based on page state
+        if (pageState === 'logged_in_app' || pageState === 'logged_in_menu') {
+            broadcastLog("✅ Session restored successfully!");
+        } else if (pageState === 'oauth_login' || pageState === 'native_login' || pageState === 'unknown') {
             broadcastLog("🔒 Logging in as " + areaName + "...");
             await performLogin(page, areaName);
         }
@@ -715,23 +734,41 @@ export async function runCrawlPeriod21_30(areaName = "BANDUNG", onlyUnapproved =
             { waitUntil: "networkidle", timeout: 60000 }
         );
         
-        // ✅ Wait for page to stabilize and check actual state
-        await page.waitForTimeout(3000);
+        // ✅ Wait for page to stabilize
+        console.log("   ⏳ Waiting for page to fully load...");
+        await page.waitForTimeout(5000);
         
-        // ✅ Check multiple indicators of login state
-        const checklistButton = await page.locator('div[role="button"] i.fa-check').count();
-        const loginButton = await page.locator('div.GenericActionButton__paddington:has(i.fa-sign-in-alt)').count();
-        const navigationMenu = await page.locator("ul[role='navigation']").count();
+        // ✅ RETRY LOOP: Check page state with retries
+        let pageState = 'unknown';
+        let retryCount = 0;
+        const maxRetries = 5;
         
-        console.log(`   🔍 Page state: checklist=${checklistButton}, login=${loginButton}, nav=${navigationMenu}`);
+        while (pageState === 'unknown' && retryCount < maxRetries) {
+            retryCount++;
+            console.log(`   🔍 Page state check (attempt ${retryCount}/${maxRetries})...`);
+            
+            const checklistButton = await page.locator('div[role="button"] i.fa-check').count();
+            const navigationMenu = await page.locator("ul[role='navigation']").count();
+            const googleButton = await page.locator('button#Google').count();
+            
+            console.log(`      - Checklist: ${checklistButton} | Nav: ${navigationMenu} | Google: ${googleButton}`);
+            
+            if (checklistButton > 0 || navigationMenu > 0) {
+                pageState = 'logged_in';
+                console.log("   ✅ Already logged in!");
+            } else if (googleButton > 0 || page.url().includes('/Account/Login')) {
+                pageState = 'need_login';
+                console.log("   🔐 Need to login");
+            } else {
+                if (retryCount < maxRetries) {
+                    console.log(`   ⏳ Page still loading, waiting 3s...`);
+                    await page.waitForTimeout(3000);
+                }
+            }
+        }
         
-        // ✅ Determine if already logged in
-        const isFullyLoggedIn = checklistButton > 0 || navigationMenu > 0;
-        
-        if (!isFullyLoggedIn) {
+        if (pageState !== 'logged_in') {
             await performLogin(page, areaName);
-        } else {
-            console.log("✅ Already logged in!");
         }
 
         await waitForSyncComplete(page, 120000);
@@ -1110,12 +1147,63 @@ async function performLogin(page, areaName) {
         }
     }
     
-    // ✅ Step 6: Unknown page state - take screenshot for debugging
-    console.log("❌ Unknown page state!");
+    // ✅ Step 6: Check if page is still loading or we're already in the app
+    // Wait for any of these: checklist button, nav menu, login button, or google button
+    console.log("   ⏳ Waiting for page to fully render...");
+    
+    try {
+        await Promise.race([
+            page.waitForSelector('div[role="button"] i.fa-check', { timeout: 15000 }),
+            page.waitForSelector("ul[role='navigation']", { timeout: 15000 }),
+            page.waitForSelector('button#Google', { timeout: 15000 }),
+            page.waitForSelector('div.GenericActionButton__paddington:has(i.fa-sign-in-alt)', { timeout: 15000 }),
+        ]);
+        console.log("   ✅ Page element found!");
+    } catch (e) {
+        console.log("   ⚠️ Timeout waiting for any known element");
+    }
+    
+    // Re-check after waiting
+    const checklistFinal = await page.locator('div[role="button"] i.fa-check').count();
+    const navMenuFinal = await page.locator("ul[role='navigation']").count();
+    
+    if (checklistFinal > 0 || navMenuFinal > 0) {
+        console.log("✅ Already logged in (found after wait)!");
+        return;
+    }
+    
+    // Check for Google button again
+    const googleBtnFinal = await page.locator('button#Google').count();
+    if (googleBtnFinal > 0) {
+        console.log("   🖱️ Found Google button, clicking...");
+        await page.locator('button#Google').click();
+        await page.waitForTimeout(5000);
+        
+        // Check result
+        const afterGoogle = await page.locator('div[role="button"] i.fa-check').count();
+        if (afterGoogle > 0) {
+            console.log("✅ OAuth login successful!");
+            return;
+        }
+        
+        // Check if on Google login page
+        if (page.url().includes('accounts.google.com')) {
+            throw new Error("Google OAuth requires authentication - cookies expired");
+        }
+    }
+    
+    // Final unknown state
+    console.log("❌ Unknown page state after all checks!");
     try {
         await page.screenshot({ path: '/app/unknown-state.png', fullPage: true });
         console.log("   📸 Screenshot saved to /app/unknown-state.png");
     } catch (e) {}
+    
+    // List all visible elements for debugging
+    console.log("   📋 Page debug info:");
+    console.log(`      URL: ${page.url()}`);
+    const bodyText = await page.locator('body').textContent();
+    console.log(`      Body text (first 200 chars): ${bodyText?.substring(0, 200)}`);
     
     throw new Error("Could not determine login method - unknown page state");
 }
