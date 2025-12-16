@@ -303,7 +303,7 @@ export async function runCrawlPeriod1_20(areaName = "BANDUNG", runId = null) {
         broadcastLog("🔧 Running in local environment");
         const userDataDir = "C:\\Users\\Luxion\\AppData\\Local\\Google\\Chrome\\User Data\\PlaywrightProfile";
         browser = await chromium.launchPersistentContext(userDataDir, {
-            headless: true,
+            headless: false,
             channel: "chrome",
             args: [
                 "--start-maximized",
@@ -317,7 +317,7 @@ export async function runCrawlPeriod1_20(areaName = "BANDUNG", runId = null) {
         broadcastLog("🔧 Running on Render.com (persistent browser)");
         const userDataDir = "/app/playwright-data";
         browser = await chromium.launchPersistentContext(userDataDir, {
-            headless: true,
+            headless: false,
             args: [
                 "--no-sandbox",
                 "--disable-setuid-sandbox",
@@ -342,14 +342,20 @@ export async function runCrawlPeriod1_20(areaName = "BANDUNG", runId = null) {
             broadcastLog("🔐 Loading pre-seeded OAuth session...");
             const sessionData = JSON.parse(process.env.OAUTH_SESSION_DATA);
             
-            // Add cookies FIRST
+            // Add cookies FIRST (before any navigation)
             if (sessionData.cookies && sessionData.cookies.length > 0) {
                 await page.context().addCookies(sessionData.cookies);
                 broadcastLog(`   ✅ Loaded ${sessionData.cookies.length} cookies`);
             }
             
-            // Navigate to AppSheet to establish domain context
-            await page.goto("https://www.appsheet.com", { waitUntil: "domcontentloaded" });
+            // Navigate to Google first to establish Google cookies
+            broadcastLog("   🌐 Establishing Google session...");
+            await page.goto("https://accounts.google.com", { waitUntil: "domcontentloaded", timeout: 30000 });
+            await page.waitForTimeout(2000);
+            
+            // Now navigate to AppSheet
+            broadcastLog("   🌐 Navigating to AppSheet...");
+            await page.goto("https://www.appsheet.com", { waitUntil: "domcontentloaded", timeout: 30000 });
             await page.waitForTimeout(1000);
             
             // Set localStorage
@@ -363,11 +369,6 @@ export async function runCrawlPeriod1_20(areaName = "BANDUNG", runId = null) {
             }
             
             broadcastLog("   ✅ Pre-seeded session loaded successfully!");
-            broadcastLog("   🔄 Refreshing page to apply session...");
-            
-            // Refresh to apply all session data
-            await page.reload({ waitUntil: "domcontentloaded" });
-            await page.waitForTimeout(2000);
         } catch (error) {
             broadcastLog(`   ⚠️ Failed to load pre-seeded session: ${error.message}`);
             broadcastLog("   → Will use persistent context instead");
@@ -380,24 +381,43 @@ export async function runCrawlPeriod1_20(areaName = "BANDUNG", runId = null) {
             "https://www.appsheet.com/start/c08488d5-d2b3-4411-b6cc-8f387c028e7c?platform=desktop#appName=SLAMtes-320066460",
             { waitUntil: "networkidle", timeout: 60000 }
         );
-
-        const isLoggedIn = await checkIfLoggedIn(page);
-        if (isLoggedIn) {
-            // ✅ CRITICAL: Always logout first to ensure correct user
-            broadcastLog("⚠️  Detected existing session - Logging out to ensure correct user...");
-            await performLogout(page);
-            await page.waitForTimeout(2000);
-            
-            // Reload page after logout
-            broadcastLog("🔄 Reloading page after logout...");
-            await page.goto(
-                "https://www.appsheet.com/start/c08488d5-d2b3-4411-b6cc-8f387c028e7c?platform=desktop#appName=SLAMtes-320066460",
-                { waitUntil: "networkidle", timeout: 60000 }
-            );
-        }
         
-        broadcastLog("🔒 Logging in as " + areaName + "...");
-        await performLogin(page, areaName);
+        // ✅ Wait for page to stabilize and check actual state
+        await page.waitForTimeout(3000);
+        
+        // ✅ DEBUG: Log current URL and page state
+        const currentUrl = page.url();
+        broadcastLog(`   📍 Current URL: ${currentUrl}`);
+        
+        // ✅ Check multiple indicators of login state
+        const checklistButton = await page.locator('div[role="button"] i.fa-check').count();
+        const logoutButton = await page.locator('span[data-testonly-action="logout"]').count();
+        const loginButton = await page.locator('div.GenericActionButton__paddington:has(i.fa-sign-in-alt)').count();
+        const navigationMenu = await page.locator("ul[role='navigation']").count();
+        
+        broadcastLog(`   🔍 Page state check:`);
+        broadcastLog(`      - Checklist button: ${checklistButton > 0 ? '✅ Found' : '❌ Not found'}`);
+        broadcastLog(`      - Logout button: ${logoutButton > 0 ? '✅ Found' : '❌ Not found'}`);
+        broadcastLog(`      - Login button: ${loginButton > 0 ? '✅ Found' : '❌ Not found'}`);
+        broadcastLog(`      - Navigation menu: ${navigationMenu > 0 ? '✅ Found' : '❌ Not found'}`);
+
+        // ✅ Determine if already logged in
+        const isFullyLoggedIn = checklistButton > 0 || (navigationMenu > 0 && logoutButton > 0);
+        
+        if (isFullyLoggedIn) {
+            broadcastLog("✅ Already logged in! Checking if correct user...");
+            // Check if correct user - for now, proceed with existing session
+            // In future, verify username matches
+        } else if (loginButton > 0) {
+            // AppSheet native login screen
+            broadcastLog("🔒 AppSheet login screen detected");
+            broadcastLog("🔒 Logging in as " + areaName + "...");
+            await performLogin(page, areaName);
+        } else {
+            // Need to handle OAuth or other login flow
+            broadcastLog("🔒 Logging in as " + areaName + "...");
+            await performLogin(page, areaName);
+        }
 
         await waitForSyncComplete(page, 120000);
         await navigateToChecklist(page);
@@ -617,7 +637,7 @@ export async function runCrawlPeriod21_30(areaName = "BANDUNG", onlyUnapproved =
         console.log("🔧 Running in local environment");
         const userDataDir = "C:\\Users\\Luxion\\AppData\\Local\\Google\\Chrome\\User Data\\PlaywrightProfile";
         browser = await chromium.launchPersistentContext(userDataDir, {
-            headless: true,
+            headless: false,
             channel: "chrome",
             args: [
                 "--start-maximized",
@@ -631,7 +651,7 @@ export async function runCrawlPeriod21_30(areaName = "BANDUNG", onlyUnapproved =
         console.log("🔧 Running on Render.com (persistent browser)");
         const userDataDir = "/app/playwright-data";
         browser = await chromium.launchPersistentContext(userDataDir, {
-            headless: true,
+            headless: false,
             args: [
                 "--no-sandbox",
                 "--disable-setuid-sandbox",
@@ -656,14 +676,20 @@ export async function runCrawlPeriod21_30(areaName = "BANDUNG", onlyUnapproved =
             console.log("🔐 Loading pre-seeded OAuth session...");
             const sessionData = JSON.parse(process.env.OAUTH_SESSION_DATA);
             
-            // Add cookies FIRST
+            // Add cookies FIRST (before any navigation)
             if (sessionData.cookies && sessionData.cookies.length > 0) {
                 await page.context().addCookies(sessionData.cookies);
                 console.log(`   ✅ Loaded ${sessionData.cookies.length} cookies`);
             }
             
-            // Navigate to AppSheet to establish domain context
-            await page.goto("https://www.appsheet.com", { waitUntil: "domcontentloaded" });
+            // Navigate to Google first to establish Google cookies
+            console.log("   🌐 Establishing Google session...");
+            await page.goto("https://accounts.google.com", { waitUntil: "domcontentloaded", timeout: 30000 });
+            await page.waitForTimeout(2000);
+            
+            // Now navigate to AppSheet
+            console.log("   🌐 Navigating to AppSheet...");
+            await page.goto("https://www.appsheet.com", { waitUntil: "domcontentloaded", timeout: 30000 });
             await page.waitForTimeout(1000);
             
             // Set localStorage
@@ -677,25 +703,35 @@ export async function runCrawlPeriod21_30(areaName = "BANDUNG", onlyUnapproved =
             }
             
             console.log("   ✅ Pre-seeded session loaded successfully!");
-            console.log("   🔄 Refreshing page to apply session...");
-            
-            // Refresh to apply all session data
-            await page.reload({ waitUntil: "domcontentloaded" });
-            await page.waitForTimeout(2000);
         } catch (error) {
             console.log(`   ⚠️ Failed to load pre-seeded session: ${error.message}`);
         }
     }
 
     try {
+        console.log("🌐 Opening AppSheet app...");
         await page.goto(
             "https://www.appsheet.com/start/c08488d5-d2b3-4411-b6cc-8f387c028e7c?platform=desktop#appName=SLAMtes-320066460",
             { waitUntil: "networkidle", timeout: 60000 }
         );
-
-        const isLoggedIn = await checkIfLoggedIn(page);
-        if (!isLoggedIn) {
+        
+        // ✅ Wait for page to stabilize and check actual state
+        await page.waitForTimeout(3000);
+        
+        // ✅ Check multiple indicators of login state
+        const checklistButton = await page.locator('div[role="button"] i.fa-check').count();
+        const loginButton = await page.locator('div.GenericActionButton__paddington:has(i.fa-sign-in-alt)').count();
+        const navigationMenu = await page.locator("ul[role='navigation']").count();
+        
+        console.log(`   🔍 Page state: checklist=${checklistButton}, login=${loginButton}, nav=${navigationMenu}`);
+        
+        // ✅ Determine if already logged in
+        const isFullyLoggedIn = checklistButton > 0 || navigationMenu > 0;
+        
+        if (!isFullyLoggedIn) {
             await performLogin(page, areaName);
+        } else {
+            console.log("✅ Already logged in!");
         }
 
         await waitForSyncComplete(page, 120000);
@@ -990,9 +1026,36 @@ async function performLogin(page, areaName) {
         await page.waitForSelector("ul[role='navigation']", { timeout: 60000 });
         console.log("✅ Login success for area:", areaName);
     } else {
-        // ✅ Provider selection screen - Handle Google OAuth automatically
+        // ✅ Provider selection screen OR OAuth redirect - Handle automatically
         console.log("🔐 OAuth provider selection screen detected");
         console.log("   🎯 Looking for Google sign-in button...");
+        
+        // ✅ DEBUG: Take screenshot and log page content
+        try {
+            const screenshotPath = '/app/oauth-debug.png';
+            await page.screenshot({ path: screenshotPath, fullPage: true });
+            console.log(`   📸 Screenshot saved to ${screenshotPath}`);
+        } catch (e) {
+            console.log(`   📸 Screenshot failed: ${e.message}`);
+        }
+        
+        // ✅ DEBUG: Log all buttons on page
+        const allButtons = await page.locator('button').all();
+        console.log(`   🔍 Found ${allButtons.length} buttons on page:`);
+        for (let i = 0; i < Math.min(allButtons.length, 10); i++) {
+            try {
+                const btnText = await allButtons[i].textContent();
+                const btnId = await allButtons[i].getAttribute('id');
+                const btnName = await allButtons[i].getAttribute('name');
+                console.log(`      [${i}] id="${btnId}" name="${btnName}" text="${btnText?.trim().substring(0, 50)}"`);
+            } catch (e) {}
+        }
+        
+        // ✅ DEBUG: Log page title and URL
+        const pageTitle = await page.title();
+        const pageUrl = page.url();
+        console.log(`   📄 Page title: ${pageTitle}`);
+        console.log(`   🔗 Page URL: ${pageUrl}`);
         
         try {
             // Wait for provider selection buttons to appear
@@ -1003,33 +1066,70 @@ async function performLogin(page, areaName) {
                 'button#Google',                           // ID selector (most specific)
                 'button[name="provider"][value="google"]', // Name + value attributes
                 'button[id="Google"]',                     // ID attribute
+                'input[type="submit"][value*="Google"]',   // Submit input with Google
+                'button[type="submit"]:has-text("Google")', // Submit button with Google text
+                'form button:has-text("Google")',          // Button inside form
                 'button:has-text("Sign in with Google")',
                 'button:has-text("Google")',
                 'button:has-text("Continue with Google")',
                 'a:has-text("Sign in with Google")',
                 'a:has-text("Google")',
-                'a:has-text("Continue with Google")',
                 '[data-provider="google"]',
                 'button[aria-label*="Google"]',
-                'a[aria-label*="Google"]',
             ];
             
             let googleButtonFound = false;
             for (const selector of googleButtonSelectors) {
-                const buttonCount = await page.locator(selector).count();
-                if (buttonCount > 0) {
-                    console.log(`   ✅ Found Google button with selector: ${selector}`);
-                    console.log("   🖱️  Clicking Google sign-in...");
-                    await page.locator(selector).first().click();
-                    googleButtonFound = true;
-                    break;
+                try {
+                    const buttonCount = await page.locator(selector).count();
+                    console.log(`   🔍 Trying selector "${selector}": ${buttonCount} found`);
+                    if (buttonCount > 0) {
+                        console.log(`   ✅ Found Google button with selector: ${selector}`);
+                        console.log("   🖱️  Clicking Google sign-in...");
+                        await page.locator(selector).first().click();
+                        googleButtonFound = true;
+                        break;
+                    }
+                } catch (selectorError) {
+                    console.log(`   ⚠️ Selector "${selector}" error: ${selectorError.message}`);
+                }
+            }
+            
+            if (!googleButtonFound) {
+                // ✅ FALLBACK: Try clicking any button that might be Google-related
+                console.log("   ⚠️ Standard selectors failed, trying fallback...");
+                
+                // Check if we're on Google's login page instead
+                if (pageUrl.includes('accounts.google.com')) {
+                    console.log("   📍 Detected Google login page");
+                    console.log("   ❌ Google requires manual authentication");
+                    throw new Error("Google OAuth requires manual login - session cookies may have expired");
+                }
+                
+                // Try to find any clickable element with "Google" text
+                const googleElements = await page.locator('*:has-text("Google")').all();
+                console.log(`   🔍 Found ${googleElements.length} elements with 'Google' text`);
+                
+                for (let i = 0; i < Math.min(googleElements.length, 5); i++) {
+                    try {
+                        const tagName = await googleElements[i].evaluate(el => el.tagName);
+                        const isClickable = tagName === 'BUTTON' || tagName === 'A' || tagName === 'INPUT';
+                        if (isClickable) {
+                            console.log(`   🖱️ Trying to click element ${i} (${tagName})...`);
+                            await googleElements[i].click();
+                            googleButtonFound = true;
+                            break;
+                        }
+                    } catch (e) {}
                 }
             }
             
             if (!googleButtonFound) {
                 console.error("   ❌ Google sign-in button not found!");
-                console.log("   📸 Taking screenshot for debugging...");
-                await page.screenshot({ path: '/app/oauth-screen.png', fullPage: true });
+                console.log("   📸 Taking final screenshot for debugging...");
+                try {
+                    await page.screenshot({ path: '/app/oauth-final-error.png', fullPage: true });
+                } catch (e) {}
                 throw new Error("Google sign-in button not found on provider selection screen");
             }
             
@@ -1044,12 +1144,20 @@ async function performLogin(page, areaName) {
                 return;
             }
             
+            // Check if we're back at AppSheet with checklist
+            const checklistBtn = await page.locator('div[role="button"] i.fa-check').count();
+            if (checklistBtn > 0) {
+                console.log("✅ OAuth success - AppSheet app loaded!");
+                return;
+            }
+            
             // If Google login form appears, handle it
             const googleEmailInput = await page.locator('input[type="email"]').count();
             if (googleEmailInput > 0) {
-                console.log("   📧 Google email form detected - Manual intervention required!");
-                console.log("   ⚠️  Cannot auto-fill Google credentials (security restriction)");
-                throw new Error("Google OAuth requires manual authentication - Use persistent context with saved session");
+                console.log("   📧 Google email form detected - Session expired!");
+                console.log("   ⚠️  Pre-seeded cookies did not work");
+                console.log("   ℹ️  You need to re-extract cookies from a fresh login");
+                throw new Error("Google OAuth session expired - Please re-extract cookies");
             }
             
             // Wait for final redirect back to AppSheet
