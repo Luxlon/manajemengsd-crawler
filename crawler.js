@@ -342,14 +342,15 @@ export async function runCrawlPeriod1_20(areaName = "BANDUNG", runId = null) {
             broadcastLog("🔐 Loading pre-seeded OAuth session...");
             const sessionData = JSON.parse(process.env.OAUTH_SESSION_DATA);
             
-            // Add cookies
+            // Add cookies FIRST
             if (sessionData.cookies && sessionData.cookies.length > 0) {
                 await page.context().addCookies(sessionData.cookies);
                 broadcastLog(`   ✅ Loaded ${sessionData.cookies.length} cookies`);
             }
             
-            // Navigate to AppSheet first before setting localStorage
+            // Navigate to AppSheet to establish domain context
             await page.goto("https://www.appsheet.com", { waitUntil: "domcontentloaded" });
+            await page.waitForTimeout(1000);
             
             // Set localStorage
             if (sessionData.localStorage) {
@@ -362,6 +363,11 @@ export async function runCrawlPeriod1_20(areaName = "BANDUNG", runId = null) {
             }
             
             broadcastLog("   ✅ Pre-seeded session loaded successfully!");
+            broadcastLog("   🔄 Refreshing page to apply session...");
+            
+            // Refresh to apply all session data
+            await page.reload({ waitUntil: "domcontentloaded" });
+            await page.waitForTimeout(2000);
         } catch (error) {
             broadcastLog(`   ⚠️ Failed to load pre-seeded session: ${error.message}`);
             broadcastLog("   → Will use persistent context instead");
@@ -369,7 +375,7 @@ export async function runCrawlPeriod1_20(areaName = "BANDUNG", runId = null) {
     }
 
     try {
-        broadcastLog("🌐 Opening AppSheet...");
+        broadcastLog("🌐 Opening AppSheet app...");
         await page.goto(
             "https://www.appsheet.com/start/c08488d5-d2b3-4411-b6cc-8f387c028e7c?platform=desktop#appName=SLAMtes-320066460",
             { waitUntil: "networkidle", timeout: 60000 }
@@ -650,13 +656,17 @@ export async function runCrawlPeriod21_30(areaName = "BANDUNG", onlyUnapproved =
             console.log("🔐 Loading pre-seeded OAuth session...");
             const sessionData = JSON.parse(process.env.OAUTH_SESSION_DATA);
             
+            // Add cookies FIRST
             if (sessionData.cookies && sessionData.cookies.length > 0) {
                 await page.context().addCookies(sessionData.cookies);
                 console.log(`   ✅ Loaded ${sessionData.cookies.length} cookies`);
             }
             
+            // Navigate to AppSheet to establish domain context
             await page.goto("https://www.appsheet.com", { waitUntil: "domcontentloaded" });
+            await page.waitForTimeout(1000);
             
+            // Set localStorage
             if (sessionData.localStorage) {
                 await page.evaluate((data) => {
                     for (const [key, value] of Object.entries(data)) {
@@ -667,6 +677,11 @@ export async function runCrawlPeriod21_30(areaName = "BANDUNG", onlyUnapproved =
             }
             
             console.log("   ✅ Pre-seeded session loaded successfully!");
+            console.log("   🔄 Refreshing page to apply session...");
+            
+            // Refresh to apply all session data
+            await page.reload({ waitUntil: "domcontentloaded" });
+            await page.waitForTimeout(2000);
         } catch (error) {
             console.log(`   ⚠️ Failed to load pre-seeded session: ${error.message}`);
         }
