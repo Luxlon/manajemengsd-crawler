@@ -336,11 +336,34 @@ export async function runCrawlPeriod1_20(areaName = "BANDUNG", runId = null) {
         ? (browser.pages()[0] || await browser.newPage())
         : await browser.newPage();
 
-    // ✅ NOTE: Akun BANDUNG/CORPU/etc menggunakan USERNAME+PASSWORD login
-    // Langsung ke App URL, lalu cek tombol Login dan isi credentials
+    // ✅ Load cookies if available (untuk bypass OAuth redirect)
+    // PENTING: Cookies di-load SEBELUM navigasi, lalu LANGSUNG ke App URL
+    if (process.env.OAUTH_SESSION_DATA) {
+        try {
+            broadcastLog("🔐 Loading cookies untuk bypass OAuth...");
+            const sessionData = JSON.parse(process.env.OAUTH_SESSION_DATA);
+            
+            if (sessionData.cookies && sessionData.cookies.length > 0) {
+                // Filter valid cookies
+                const validCookies = sessionData.cookies.filter(c => c.domain);
+                await page.context().addCookies(validCookies);
+                broadcastLog(`   ✅ Loaded ${validCookies.length} cookies ke browser context`);
+            }
+            
+            // Set localStorage if available
+            if (sessionData.localStorage) {
+                // localStorage akan di-set setelah navigasi ke domain appsheet
+                broadcastLog(`   ℹ️ localStorage akan di-set setelah navigasi`);
+            }
+        } catch (error) {
+            broadcastLog(`   ⚠️ Failed to load cookies: ${error.message}`);
+            broadcastLog("   → Akan login dengan username/password");
+        }
+    }
 
     try {
-        broadcastLog("🌐 Opening AppSheet app (direct to App URL)...");
+        // ✅ LANGSUNG ke App URL (tidak ke homepage!)
+        broadcastLog("🌐 LANGSUNG navigasi ke App URL...");
         await page.goto(
             "https://www.appsheet.com/start/c08488d5-d2b3-4411-b6cc-8f387c028e7c?platform=desktop#appName=SLAMtes-320066460",
             { waitUntil: "networkidle", timeout: 60000 }
@@ -350,23 +373,69 @@ export async function runCrawlPeriod1_20(areaName = "BANDUNG", runId = null) {
         broadcastLog("   ⏳ Waiting for page to fully load...");
         await page.waitForTimeout(5000);
         
-        // ✅ Check page state
+        // ✅ Set localStorage setelah navigasi (jika ada)
+        if (process.env.OAUTH_SESSION_DATA) {
+            try {
+                const sessionData = JSON.parse(process.env.OAUTH_SESSION_DATA);
+                if (sessionData.localStorage) {
+                    await page.evaluate((data) => {
+                        for (const [key, value] of Object.entries(data)) {
+                            window.localStorage.setItem(key, value);
+                        }
+                    }, sessionData.localStorage);
+                    broadcastLog(`   ✅ localStorage data set`);
+                }
+            } catch (e) {}
+        }
+        
+        // ✅ DEBUG: Log current URL
         const currentUrl = page.url();
         broadcastLog(`   📍 Current URL: ${currentUrl}`);
         
-        // ✅ Check page elements
-        broadcastLog("   🔍 Checking page state...");
-        const checklistButton = await page.locator('div[role="button"] i.fa-check').count();
-        const loginButton = await page.locator('div.GenericActionButton__paddington:has(i.fa-sign-in-alt)').count();
-        const navigationMenu = await page.locator("ul[role='navigation']").count();
+        // ✅ RETRY LOOP: Check page state with retries
+        let pageState = 'unknown';
+        let retryCount = 0;
+        const maxRetries = 5;
         
-        broadcastLog(`      - Checklist: ${checklistButton} | Login: ${loginButton} | Nav: ${navigationMenu}`);
+        while (pageState === 'unknown' && retryCount < maxRetries) {
+            retryCount++;
+            broadcastLog(`   🔍 Page state check (attempt ${retryCount}/${maxRetries})...`);
+            
+            // Check multiple indicators
+            const checklistButton = await page.locator('div[role="button"] i.fa-check').count();
+            const loginButton = await page.locator('div.GenericActionButton__paddington:has(i.fa-sign-in-alt)').count();
+            const navigationMenu = await page.locator("ul[role='navigation']").count();
+            const googleButton = await page.locator('button#Google').count();
+            const usernameInput = await page.locator('input[aria-label="Username"]').count();
+            
+            broadcastLog(`      - Checklist: ${checklistButton} | Login: ${loginButton} | Nav: ${navigationMenu} | Google: ${googleButton} | UsernameInput: ${usernameInput}`);
+            
+            if (checklistButton > 0 || navigationMenu > 0) {
+                pageState = 'logged_in';
+                broadcastLog("   ✅ Already logged in!");
+            } else if (loginButton > 0) {
+                pageState = 'need_login';
+                broadcastLog("   🔐 Tombol Login ditemukan - perlu login");
+            } else if (usernameInput > 0) {
+                pageState = 'login_form_open';
+                broadcastLog("   📝 Login form sudah terbuka");
+            } else if (googleButton > 0 || currentUrl.includes('/Account/Login')) {
+                pageState = 'oauth_page';
+                broadcastLog("   🔐 OAuth page detected");
+            } else {
+                // Still unknown - wait and retry
+                if (retryCount < maxRetries) {
+                    broadcastLog(`   ⏳ Page still loading, waiting 3s...`);
+                    await page.waitForTimeout(3000);
+                }
+            }
+        }
         
-        // ✅ Determine state and handle login
-        if (checklistButton > 0 || navigationMenu > 0) {
-            broadcastLog("   ✅ Already logged in!");
+        // ✅ Handle based on page state
+        if (pageState === 'logged_in') {
+            broadcastLog("✅ Session restored successfully!");
         } else {
-            broadcastLog("   🔒 Need to login as " + areaName + "...");
+            broadcastLog("🔒 Logging in as " + areaName + "...");
             await performLogin(page, areaName);
         }
 
@@ -621,11 +690,28 @@ export async function runCrawlPeriod21_30(areaName = "BANDUNG", onlyUnapproved =
         ? (browser.pages()[0] || await browser.newPage())
         : await browser.newPage();
 
-    // ✅ NOTE: Akun BANDUNG/CORPU/etc menggunakan USERNAME+PASSWORD login
-    // Langsung ke App URL, lalu cek tombol Login dan isi credentials
+    // ✅ Load cookies if available (untuk bypass OAuth redirect)
+    // PENTING: Cookies di-load SEBELUM navigasi, lalu LANGSUNG ke App URL
+    if (process.env.OAUTH_SESSION_DATA) {
+        try {
+            console.log("🔐 Loading cookies untuk bypass OAuth...");
+            const sessionData = JSON.parse(process.env.OAUTH_SESSION_DATA);
+            
+            if (sessionData.cookies && sessionData.cookies.length > 0) {
+                // Filter valid cookies
+                const validCookies = sessionData.cookies.filter(c => c.domain);
+                await page.context().addCookies(validCookies);
+                console.log(`   ✅ Loaded ${validCookies.length} cookies ke browser context`);
+            }
+        } catch (error) {
+            console.log(`   ⚠️ Failed to load cookies: ${error.message}`);
+            console.log("   → Akan login dengan username/password");
+        }
+    }
 
     try {
-        console.log("🌐 Opening AppSheet app (direct to App URL)...");
+        // ✅ LANGSUNG ke App URL (tidak ke homepage!)
+        console.log("🌐 LANGSUNG navigasi ke App URL...");
         await page.goto(
             "https://www.appsheet.com/start/c08488d5-d2b3-4411-b6cc-8f387c028e7c?platform=desktop#appName=SLAMtes-320066460",
             { waitUntil: "networkidle", timeout: 60000 }
@@ -635,23 +721,59 @@ export async function runCrawlPeriod21_30(areaName = "BANDUNG", onlyUnapproved =
         console.log("   ⏳ Waiting for page to fully load...");
         await page.waitForTimeout(5000);
         
-        // ✅ Check page state
-        const currentUrl = page.url();
-        console.log(`   📍 Current URL: ${currentUrl}`);
+        // ✅ Set localStorage setelah navigasi (jika ada)
+        if (process.env.OAUTH_SESSION_DATA) {
+            try {
+                const sessionData = JSON.parse(process.env.OAUTH_SESSION_DATA);
+                if (sessionData.localStorage) {
+                    await page.evaluate((data) => {
+                        for (const [key, value] of Object.entries(data)) {
+                            window.localStorage.setItem(key, value);
+                        }
+                    }, sessionData.localStorage);
+                    console.log(`   ✅ localStorage data set`);
+                }
+            } catch (e) {}
+        }
         
-        // ✅ Check page elements
-        console.log("   🔍 Checking page state...");
-        const checklistButton = await page.locator('div[role="button"] i.fa-check').count();
-        const loginButton = await page.locator('div.GenericActionButton__paddington:has(i.fa-sign-in-alt)').count();
-        const navigationMenu = await page.locator("ul[role='navigation']").count();
+        // ✅ RETRY LOOP: Check page state with retries
+        let pageState = 'unknown';
+        let retryCount = 0;
+        const maxRetries = 5;
         
-        console.log(`      - Checklist: ${checklistButton} | Login: ${loginButton} | Nav: ${navigationMenu}`);
+        while (pageState === 'unknown' && retryCount < maxRetries) {
+            retryCount++;
+            console.log(`   🔍 Page state check (attempt ${retryCount}/${maxRetries})...`);
+            
+            const checklistButton = await page.locator('div[role="button"] i.fa-check').count();
+            const loginButton = await page.locator('div.GenericActionButton__paddington:has(i.fa-sign-in-alt)').count();
+            const navigationMenu = await page.locator("ul[role='navigation']").count();
+            const googleButton = await page.locator('button#Google').count();
+            const usernameInput = await page.locator('input[aria-label="Username"]').count();
+            
+            console.log(`      - Checklist: ${checklistButton} | Login: ${loginButton} | Nav: ${navigationMenu} | Google: ${googleButton} | UsernameInput: ${usernameInput}`);
+            
+            if (checklistButton > 0 || navigationMenu > 0) {
+                pageState = 'logged_in';
+                console.log("   ✅ Already logged in!");
+            } else if (loginButton > 0) {
+                pageState = 'need_login';
+                console.log("   🔐 Tombol Login ditemukan - perlu login");
+            } else if (usernameInput > 0) {
+                pageState = 'login_form_open';
+                console.log("   📝 Login form sudah terbuka");
+            } else if (googleButton > 0 || page.url().includes('/Account/Login')) {
+                pageState = 'oauth_page';
+                console.log("   🔐 OAuth page detected");
+            } else {
+                if (retryCount < maxRetries) {
+                    console.log(`   ⏳ Page still loading, waiting 3s...`);
+                    await page.waitForTimeout(3000);
+                }
+            }
+        }
         
-        // ✅ Determine state and handle login
-        if (checklistButton > 0 || navigationMenu > 0) {
-            console.log("   ✅ Already logged in!");
-        } else {
-            console.log("   🔒 Need to login as " + areaName + "...");
+        if (pageState !== 'logged_in') {
             await performLogin(page, areaName);
         }
 
@@ -903,9 +1025,10 @@ async function checkIfLoggedIn(page) {
 async function performLogin(page, areaName) {
     const credentials = CONFIG.credentials[areaName];
     
-    // ✅ Verify credentials loaded
+    // ✅ Debug: Verify credentials loaded
     if (!credentials || !credentials.username || !credentials.password) {
         console.error("❌ Credentials missing for area:", areaName);
+        console.error("   Loaded credentials:", credentials);
         throw new Error(`Credentials not found for area: ${areaName}`);
     }
     
@@ -913,50 +1036,53 @@ async function performLogin(page, areaName) {
     console.log("   👤 Area:", areaName);
     console.log("   👤 Username:", credentials.username);
     
-    // ✅ Step 1: Wait for page to stabilize
+    // ✅ Step 1: Wait for page to load completely
     await page.waitForTimeout(2000);
     
-    // ✅ Step 2: Check if already logged in
-    const checklistExists = await page.locator('div[role="button"] i.fa-check').count() > 0;
-    const navMenuExists = await page.locator("ul[role='navigation']").count() > 0;
-    
-    if (checklistExists || navMenuExists) {
-        console.log("✅ Already logged in!");
+    // ✅ Step 2: Check if already inside AppSheet app (checklist button exists)
+    const checklistButtonExists = await page.locator('div[role="button"] i.fa-check').count() > 0;
+    if (checklistButtonExists) {
+        console.log("✅ Already logged in to AppSheet (checklist button found)");
         return;
     }
     
-    // ✅ Step 3: Look for Login button (fa-sign-in-alt) - PRIMARY METHOD
-    console.log("   🔍 Looking for Login button...");
+    const currentUrl = page.url();
+    console.log(`   📍 Current URL: ${currentUrl}`);
+    
+    // ✅ Step 3: PRIORITAS UTAMA - Cari tombol Login (fa-sign-in-alt)
+    // Ini adalah cara login untuk akun BANDUNG/CORPU/etc dengan username/password
+    console.log("   🔍 Mencari tombol Login...");
+    
     const loginButton = page.locator('div.GenericActionButton__paddington:has(i.fa-sign-in-alt)');
     const loginButtonCount = await loginButton.count();
     
     console.log(`   🔍 Login button count: ${loginButtonCount}`);
     
     if (loginButtonCount > 0) {
-        console.log("   🖱️ Found Login button! Clicking...");
+        console.log("   ✅ Tombol Login ditemukan!");
+        console.log("   🖱️ Clicking Login button...");
         await loginButton.first().click();
+        
+        // Wait for login form
+        console.log("   ⏳ Waiting for login form...");
         await page.waitForTimeout(2000);
         
-        // Wait for username input to appear
-        console.log("   ⏳ Waiting for login form...");
         try {
             await page.waitForSelector('input[aria-label="Username"]', { timeout: 15000, state: 'visible' });
             console.log("   ✅ Login form appeared!");
         } catch (e) {
-            console.log("   ⚠️ Login form timeout, checking anyway...");
+            console.log("   ⚠️ Timeout waiting for form, checking anyway...");
         }
         
-        // Fill username
+        // Fill username & password
         const usernameInput = page.locator('input[aria-label="Username"]');
         if (await usernameInput.count() > 0) {
             console.log(`   ⌨️ Filling username: ${credentials.username}`);
             await usernameInput.fill(credentials.username);
             
-            // Fill password
             console.log("   ⌨️ Filling password: ***");
             await page.fill('input[aria-label="Password"]', credentials.password);
             
-            // Click submit button
             console.log("   🖱️ Clicking Login submit button...");
             await page.click('button:has-text("Login")');
             
@@ -974,26 +1100,31 @@ async function performLogin(page, areaName) {
                 await page.waitForTimeout(3000);
                 const checkAfterLogin = await page.locator('div[role="button"] i.fa-check').count();
                 if (checkAfterLogin > 0) {
-                    console.log("✅ Login successful! (checklist found)");
+                    console.log("✅ Login successful (checklist found)!");
                     return;
                 }
                 throw new Error("Login form submitted but app did not load");
             }
         } else {
-            console.log("   ❌ Username input not found after clicking Login button");
+            console.log("   ❌ Username input tidak ditemukan setelah click Login button");
         }
     }
     
-    // ✅ Step 4: Check if already on username form (form already open)
+    // ✅ Step 4: Check if login form already open (username input visible)
     const usernameInputDirect = page.locator('input[aria-label="Username"]');
     if (await usernameInputDirect.count() > 0) {
-        console.log("   📝 Login form already open, filling credentials...");
+        console.log("   📝 Login form sudah terbuka, mengisi credentials...");
         
+        console.log(`   ⌨️ Filling username: ${credentials.username}`);
         await usernameInputDirect.fill(credentials.username);
+        
+        console.log("   ⌨️ Filling password: ***");
         await page.fill('input[aria-label="Password"]', credentials.password);
+        
+        console.log("   🖱️ Clicking Login submit button...");
         await page.click('button:has-text("Login")');
         
-        console.log("   ⏳ Waiting for app...");
+        console.log("   ⏳ Waiting for app to load...");
         try {
             await Promise.race([
                 page.waitForSelector("ul[role='navigation']", { timeout: 30000 }),
@@ -1011,19 +1142,21 @@ async function performLogin(page, areaName) {
         }
     }
     
-    // ✅ Step 5: OAuth fallback (jika redirect ke OAuth page)
-    const currentUrl = page.url();
-    if (currentUrl.includes('/Account/Login')) {
-        console.log("   🔐 OAuth login page detected (fallback)");
+    // ✅ Step 5: FALLBACK - OAuth page (jika redirect ke /Account/Login)
+    if (currentUrl.includes('/Account/Login') || currentUrl.includes('appsheet.com/Account')) {
+        console.log("   🔐 OAuth Login page detected (fallback)");
         
         const googleButton = page.locator('button#Google');
-        if (await googleButton.count() > 0) {
-            console.log("   🖱️ Clicking Google button...");
+        const googleButtonCount = await googleButton.count();
+        
+        if (googleButtonCount > 0) {
+            console.log("   🖱️ Clicking Google sign-in button...");
             await googleButton.click();
             await page.waitForTimeout(5000);
             
-            if (page.url().includes('accounts.google.com')) {
-                throw new Error("Google OAuth requires manual authentication");
+            const afterClickUrl = page.url();
+            if (afterClickUrl.includes('accounts.google.com')) {
+                throw new Error("Google OAuth requires authentication - cookies tidak valid");
             }
             
             const checklistAfterOAuth = await page.locator('div[role="button"] i.fa-check').count();
@@ -1034,16 +1167,14 @@ async function performLogin(page, areaName) {
         }
     }
     
-    // ✅ Final: Unknown state
-    console.log("❌ Could not find login method!");
-    console.log(`   📍 URL: ${page.url()}`);
-    
-    // Take screenshot for debugging
+    // ✅ Step 6: Final fallback - unknown state
+    console.log("   ⚠️ Unknown page state - taking screenshot for debugging");
     try {
-        await page.screenshot({ path: './login-failed.png', fullPage: true });
-        console.log("   📸 Screenshot saved: login-failed.png");
+        await page.screenshot({ path: './login-unknown-state.png', fullPage: true });
+        console.log("   📸 Screenshot saved: login-unknown-state.png");
     } catch (e) {}
     
+    console.log(`   📋 Current URL: ${page.url()}`);
     throw new Error("Could not determine login method - unknown page state");
 }
 
