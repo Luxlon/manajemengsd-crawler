@@ -1000,9 +1000,14 @@ async function performLogin(page, areaName) {
             
             // Try to find Google sign-in button (berbagai kemungkinan selector)
             const googleButtonSelectors = [
+                'button#Google',                           // ID selector (most specific)
+                'button[name="provider"][value="google"]', // Name + value attributes
+                'button[id="Google"]',                     // ID attribute
                 'button:has-text("Sign in with Google")',
+                'button:has-text("Google")',
                 'button:has-text("Continue with Google")',
                 'a:has-text("Sign in with Google")',
+                'a:has-text("Google")',
                 'a:has-text("Continue with Google")',
                 '[data-provider="google"]',
                 'button[aria-label*="Google"]',
