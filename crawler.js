@@ -336,44 +336,8 @@ export async function runCrawlPeriod1_20(areaName = "BANDUNG", runId = null) {
         ? (browser.pages()[0] || await browser.newPage())
         : await browser.newPage();
 
-    // ✅ Load pre-seeded OAuth session if available (for fresh Render deploys)
-    if (isRender && process.env.OAUTH_SESSION_DATA) {
-        try {
-            broadcastLog("🔐 Loading pre-seeded OAuth session...");
-            const sessionData = JSON.parse(process.env.OAUTH_SESSION_DATA);
-            
-            // Add cookies FIRST (before any navigation)
-            if (sessionData.cookies && sessionData.cookies.length > 0) {
-                await page.context().addCookies(sessionData.cookies);
-                broadcastLog(`   ✅ Loaded ${sessionData.cookies.length} cookies`);
-            }
-            
-            // Navigate to Google first to establish Google cookies
-            broadcastLog("   🌐 Establishing Google session...");
-            await page.goto("https://accounts.google.com", { waitUntil: "domcontentloaded", timeout: 30000 });
-            await page.waitForTimeout(2000);
-            
-            // Now navigate to AppSheet
-            broadcastLog("   🌐 Navigating to AppSheet...");
-            await page.goto("https://www.appsheet.com", { waitUntil: "domcontentloaded", timeout: 30000 });
-            await page.waitForTimeout(1000);
-            
-            // Set localStorage
-            if (sessionData.localStorage) {
-                await page.evaluate((data) => {
-                    for (const [key, value] of Object.entries(data)) {
-                        window.localStorage.setItem(key, value);
-                    }
-                }, sessionData.localStorage);
-                broadcastLog(`   ✅ Loaded localStorage data`);
-            }
-            
-            broadcastLog("   ✅ Pre-seeded session loaded successfully!");
-        } catch (error) {
-            broadcastLog(`   ⚠️ Failed to load pre-seeded session: ${error.message}`);
-            broadcastLog("   → Will use persistent context instead");
-        }
-    }
+    // ✅ NOTE: BANDUNG/CORPU/etc use USERNAME+PASSWORD login, NOT Google OAuth
+    // So we don't need to pre-seed cookies - just go directly to app and login with credentials
 
     try {
         broadcastLog("🌐 Opening AppSheet app...");
@@ -689,43 +653,8 @@ export async function runCrawlPeriod21_30(areaName = "BANDUNG", onlyUnapproved =
         ? (browser.pages()[0] || await browser.newPage())
         : await browser.newPage();
 
-    // ✅ Load pre-seeded OAuth session if available (for fresh Render deploys)
-    if (isRender && process.env.OAUTH_SESSION_DATA) {
-        try {
-            console.log("🔐 Loading pre-seeded OAuth session...");
-            const sessionData = JSON.parse(process.env.OAUTH_SESSION_DATA);
-            
-            // Add cookies FIRST (before any navigation)
-            if (sessionData.cookies && sessionData.cookies.length > 0) {
-                await page.context().addCookies(sessionData.cookies);
-                console.log(`   ✅ Loaded ${sessionData.cookies.length} cookies`);
-            }
-            
-            // Navigate to Google first to establish Google cookies
-            console.log("   🌐 Establishing Google session...");
-            await page.goto("https://accounts.google.com", { waitUntil: "domcontentloaded", timeout: 30000 });
-            await page.waitForTimeout(2000);
-            
-            // Now navigate to AppSheet
-            console.log("   🌐 Navigating to AppSheet...");
-            await page.goto("https://www.appsheet.com", { waitUntil: "domcontentloaded", timeout: 30000 });
-            await page.waitForTimeout(1000);
-            
-            // Set localStorage
-            if (sessionData.localStorage) {
-                await page.evaluate((data) => {
-                    for (const [key, value] of Object.entries(data)) {
-                        window.localStorage.setItem(key, value);
-                    }
-                }, sessionData.localStorage);
-                console.log(`   ✅ Loaded localStorage data`);
-            }
-            
-            console.log("   ✅ Pre-seeded session loaded successfully!");
-        } catch (error) {
-            console.log(`   ⚠️ Failed to load pre-seeded session: ${error.message}`);
-        }
-    }
+    // ✅ NOTE: BANDUNG/CORPU/etc use USERNAME+PASSWORD login, NOT Google OAuth
+    // So we don't need to pre-seed cookies - just go directly to app and login with credentials
 
     try {
         console.log("🌐 Opening AppSheet app...");
@@ -1040,172 +969,135 @@ async function performLogin(page, areaName) {
         return;
     }
     
-    // ✅ Step 3: Check current page state
-    const currentUrl = page.url();
-    console.log(`   📍 Current URL: ${currentUrl}`);
+    // ✅ Step 3: Look for LOGIN button (fa-sign-in-alt icon)
+    // This is the main login method for BANDUNG/CORPU/etc accounts
+    console.log("   🔍 Looking for Login button...");
     
-    // ✅ Step 4: Check if on AppSheet Login page (OAuth provider selection)
-    if (currentUrl.includes('/Account/Login') || currentUrl.includes('appsheet.com/Account')) {
-        console.log("🔐 AppSheet OAuth Login page detected");
-        
-        // Wait explicitly for Google button to appear
-        console.log("   ⏳ Waiting for Google button to load...");
-        try {
-            await page.waitForSelector('button#Google', { timeout: 10000, state: 'visible' });
-            console.log("   ✅ Google button is visible");
-        } catch (e) {
-            console.log("   ⚠️ Google button wait timeout, checking anyway...");
-        }
-        
-        // Check for Google button
-        const googleButton = page.locator('button#Google');
-        const googleButtonCount = await googleButton.count();
-        
-        console.log(`   🔍 Google button count: ${googleButtonCount}`);
-        
-        if (googleButtonCount > 0) {
-            console.log("   🖱️ Clicking Google sign-in button...");
-            await googleButton.click();
-            
-            // Wait for OAuth redirect
-            console.log("   ⏳ Waiting for Google OAuth...");
-            await page.waitForTimeout(5000);
-            
-            // Check where we ended up
-            const afterClickUrl = page.url();
-            console.log(`   📍 After click URL: ${afterClickUrl}`);
-            
-            // Check if we're on Google login page
-            if (afterClickUrl.includes('accounts.google.com')) {
-                console.log("   📧 Google login page detected");
-                console.log("   ❌ Pre-seeded cookies did not establish Google session");
-                console.log("   ℹ️ You need to:");
-                console.log("      1. Use Render Persistent Disk ($0.25/month)");
-                console.log("      2. Or manually login once after deploy");
-                throw new Error("Google OAuth requires authentication - cookies expired or invalid");
-            }
-            
-            // Check if we're back in AppSheet
-            const checklistAfterOAuth = await page.locator('div[role="button"] i.fa-check').count();
-            const navMenuAfterOAuth = await page.locator("ul[role='navigation']").count();
-            
-            if (checklistAfterOAuth > 0 || navMenuAfterOAuth > 0) {
-                console.log("✅ OAuth login successful!");
-                return;
-            }
-            
-            // Wait a bit more and check again
-            await page.waitForTimeout(5000);
-            const finalCheck = await page.locator('div[role="button"] i.fa-check').count();
-            if (finalCheck > 0) {
-                console.log("✅ OAuth login successful (after wait)!");
-                return;
-            }
-            
-            throw new Error("OAuth redirect did not complete successfully");
-        } else {
-            // List what buttons ARE on the page
-            console.log("   ❌ Google button not found! Listing available buttons:");
-            const allButtons = await page.locator('button').all();
-            for (let i = 0; i < Math.min(allButtons.length, 15); i++) {
-                try {
-                    const id = await allButtons[i].getAttribute('id');
-                    const text = await allButtons[i].textContent();
-                    console.log(`      [${i}] id="${id}" text="${text?.trim().substring(0, 30)}"`);
-                } catch (e) {}
-            }
-            throw new Error("Google sign-in button not found on login page");
-        }
-    }
-    
-    // ✅ Step 5: Check if Login button exists (older AppSheet UI)
     const loginButton = page.locator('div.GenericActionButton__paddington:has(i.fa-sign-in-alt)');
     const loginButtonCount = await loginButton.count();
     
+    console.log(`   🔍 Login button count: ${loginButtonCount}`);
+    
     if (loginButtonCount > 0) {
-        console.log("📝 Found AppSheet native login button");
-        console.log("   🖱️ Clicking Login button...");
+        console.log("   🖱️ Found Login button! Clicking...");
         await loginButton.first().click();
         await page.waitForTimeout(2000);
         
-        // Check if username/password form appears
+        // Wait for username input to appear
+        console.log("   ⏳ Waiting for login form...");
+        try {
+            await page.waitForSelector('input[aria-label="Username"]', { timeout: 15000, state: 'visible' });
+            console.log("   ✅ Login form appeared!");
+        } catch (e) {
+            console.log("   ⚠️ Login form timeout, checking anyway...");
+        }
+        
+        // Fill username
         const usernameInput = page.locator('input[aria-label="Username"]');
         if (await usernameInput.count() > 0) {
             console.log("   ⌨️ Filling username:", credentials.username);
             await usernameInput.fill(credentials.username);
             
+            // Fill password
             console.log("   ⌨️ Filling password: ***");
             await page.fill('input[aria-label="Password"]', credentials.password);
             
-            console.log("   🖱️ Submitting login...");
+            // Click submit button
+            console.log("   🖱️ Clicking Login submit button...");
             await page.click('button:has-text("Login")');
             
-            console.log("   ⏳ Waiting for navigation menu...");
-            await page.waitForSelector("ul[role='navigation']", { timeout: 60000 });
-            console.log("✅ Login success!");
-            return;
+            // Wait for navigation/app to load
+            console.log("   ⏳ Waiting for app to load after login...");
+            
+            // Wait for either navigation menu or checklist button
+            try {
+                await Promise.race([
+                    page.waitForSelector("ul[role='navigation']", { timeout: 30000 }),
+                    page.waitForSelector('div[role="button"] i.fa-check', { timeout: 30000 }),
+                ]);
+                console.log("✅ Login successful!");
+                return;
+            } catch (e) {
+                // Check if we're actually logged in
+                await page.waitForTimeout(3000);
+                const checkAfterLogin = await page.locator('div[role="button"] i.fa-check').count();
+                if (checkAfterLogin > 0) {
+                    console.log("✅ Login successful (checklist found)!");
+                    return;
+                }
+                throw new Error("Login form submitted but app did not load");
+            }
+        } else {
+            console.log("   ❌ Username input not found after clicking Login button");
         }
     }
     
-    // ✅ Step 6: Check if page is still loading or we're already in the app
-    // Wait for any of these: checklist button, nav menu, login button, or google button
-    console.log("   ⏳ Waiting for page to fully render...");
+    // ✅ Step 4: Check if on OAuth login page (fallback)
+    const currentUrl = page.url();
+    console.log(`   📍 Current URL: ${currentUrl}`);
     
+    if (currentUrl.includes('/Account/Login')) {
+        console.log("   🔐 OAuth login page detected");
+        
+        // Check for Google button
+        const googleButton = page.locator('button#Google');
+        const googleButtonCount = await googleButton.count();
+        
+        if (googleButtonCount > 0) {
+            console.log("   🖱️ Clicking Google sign-in button...");
+            await googleButton.click();
+            await page.waitForTimeout(5000);
+            
+            const afterClickUrl = page.url();
+            if (afterClickUrl.includes('accounts.google.com')) {
+                throw new Error("Google OAuth requires manual authentication - cannot automate Google login");
+            }
+            
+            // Check if we're back in AppSheet
+            const checklistAfterOAuth = await page.locator('div[role="button"] i.fa-check').count();
+            if (checklistAfterOAuth > 0) {
+                console.log("✅ OAuth login successful!");
+                return;
+            }
+        }
+    }
+    
+    // ✅ Step 5: Unknown state - try waiting for any login indicator
+    console.log("   ⏳ Waiting for any login element to appear...");
     try {
         await Promise.race([
             page.waitForSelector('div[role="button"] i.fa-check', { timeout: 15000 }),
             page.waitForSelector("ul[role='navigation']", { timeout: 15000 }),
-            page.waitForSelector('button#Google', { timeout: 15000 }),
             page.waitForSelector('div.GenericActionButton__paddington:has(i.fa-sign-in-alt)', { timeout: 15000 }),
+            page.waitForSelector('button#Google', { timeout: 15000 }),
+            page.waitForSelector('input[aria-label="Username"]', { timeout: 15000 }),
         ]);
-        console.log("   ✅ Page element found!");
-    } catch (e) {
-        console.log("   ⚠️ Timeout waiting for any known element");
-    }
-    
-    // Re-check after waiting
-    const checklistFinal = await page.locator('div[role="button"] i.fa-check').count();
-    const navMenuFinal = await page.locator("ul[role='navigation']").count();
-    
-    if (checklistFinal > 0 || navMenuFinal > 0) {
-        console.log("✅ Already logged in (found after wait)!");
-        return;
-    }
-    
-    // Check for Google button again
-    const googleBtnFinal = await page.locator('button#Google').count();
-    if (googleBtnFinal > 0) {
-        console.log("   🖱️ Found Google button, clicking...");
-        await page.locator('button#Google').click();
-        await page.waitForTimeout(5000);
         
-        // Check result
-        const afterGoogle = await page.locator('div[role="button"] i.fa-check').count();
-        if (afterGoogle > 0) {
-            console.log("✅ OAuth login successful!");
+        // Re-check state after waiting
+        const checklistFinal = await page.locator('div[role="button"] i.fa-check').count();
+        if (checklistFinal > 0) {
+            console.log("✅ Already logged in!");
             return;
         }
         
-        // Check if on Google login page
-        if (page.url().includes('accounts.google.com')) {
-            throw new Error("Google OAuth requires authentication - cookies expired");
+        const loginBtnFinal = await page.locator('div.GenericActionButton__paddington:has(i.fa-sign-in-alt)').count();
+        if (loginBtnFinal > 0) {
+            // Recursive call to try login again
+            console.log("   🔄 Found login button, retrying login...");
+            return performLogin(page, areaName);
         }
+        
+    } catch (e) {
+        console.log("   ⚠️ Timeout waiting for elements");
     }
     
-    // Final unknown state
-    console.log("❌ Unknown page state after all checks!");
+    // Take screenshot for debugging
+    console.log("   📸 Taking screenshot for debugging...");
     try {
-        await page.screenshot({ path: '/app/unknown-state.png', fullPage: true });
-        console.log("   📸 Screenshot saved to /app/unknown-state.png");
+        await page.screenshot({ path: '/app/login-failed.png', fullPage: true });
     } catch (e) {}
     
-    // List all visible elements for debugging
-    console.log("   📋 Page debug info:");
-    console.log(`      URL: ${page.url()}`);
-    const bodyText = await page.locator('body').textContent();
-    console.log(`      Body text (first 200 chars): ${bodyText?.substring(0, 200)}`);
-    
-    throw new Error("Could not determine login method - unknown page state");
+    throw new Error("Could not find login method - unknown page state");
 }
 
 async function waitForSyncComplete(page, maxWaitTimeMs = 120000) {
