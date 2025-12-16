@@ -28,7 +28,7 @@
       "secure": true,
       "httpOnly": true,
       "sameSite": "Lax",
-      "expires": null
+      "expires": 0
     },
     {
       "name": ".JEENEEATH",
@@ -238,7 +238,7 @@
       "secure": true,
       "httpOnly": true,
       "sameSite": "Lax",
-      "expires": null
+      "expires": 0
     },
     {
       "name": "SAPISID",
@@ -498,7 +498,7 @@
       "secure": true,
       "httpOnly": true,
       "sameSite": "Lax",
-      "expires": null
+      "expires": 0
     },
     {
       "name": "SAPISID",
@@ -758,7 +758,7 @@
       "secure": true,
       "httpOnly": true,
       "sameSite": "Lax",
-      "expires": null
+      "expires": 0
     },
     {
       "name": "SAPISID",
